@@ -128,3 +128,5 @@ compile_commands.json
 via*.json
 /keyboards/**/keymaps/via/*
 /keyboards/**/keymaps/vial/*
+# Keep VIA keymap for Sharkoon SGK50 S2 TKL
+!/keyboards/sharkoon/skiller_sgk50_s2tkl/keymaps/via/*
