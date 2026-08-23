@@ -43,6 +43,7 @@
 #define NS_PER_CYCLE (NS_PER_SEC / CYCLES_PER_SEC)
 #define NS_TO_CYCLES(n) ((n) / NS_PER_CYCLE)
 
+// Fix für GCC 15+: "memory" Clobber zwingt den Compiler, die NOPs nicht wegzuschieben
 #define wait_ns(x)                                  \
     do {                                            \
         for (int i = 0; i < NS_TO_CYCLES(x); i++) { \
@@ -51,10 +52,133 @@
                              "nop\n\t"              \
                              "nop\n\t"              \
                              "nop\n\t"              \
-                             "nop\n\t");            \
+                             "nop\n\t" ::           \
+                                 : "memory");       \
         }                                           \
     } while (0)
 
+#if defined(WB32FQ95xx)
+
+/*
+ * SGK50 S2 / WB32FQ95 WS2812 code-generation test.
+ *
+ * IMPORTANT:
+ * - The nominal QMK timings are NOT changed.
+ * - This test intentionally reproduces the timing structure seen in the
+ *   working Sharkoon firmware for PA8 on the SGK50 S2.
+ * - T0H/T1L: 12 direct NOPs, with no C loop bookkeeping in the pulse.
+ * - T1H/T0L: 5 iterations of the existing 6-NOP delay structure.
+ * - The 0/1 decision is completed BEFORE PA8 is driven HIGH.
+ *
+ * The assertions below make sure this test cannot silently be used with
+ * timing values other than the QMK defaults that we are comparing against.
+ */
+_Static_assert(WS2812_TIMING == 1250, "SGK50 S2 test expects WS2812_TIMING = 1250 ns");
+_Static_assert(WS2812_T0H == 350, "SGK50 S2 test expects WS2812_T0H = 350 ns");
+_Static_assert(WS2812_T1H == 900, "SGK50 S2 test expects WS2812_T1H = 900 ns");
+_Static_assert(WS2812_T0L == 900, "SGK50 S2 test expects WS2812_T0L = 900 ns");
+_Static_assert(WS2812_T1L == 350, "SGK50 S2 test expects WS2812_T1L = 350 ns");
+
+/*
+ * This routine is intentionally naked and consists only of basic inline
+ * assembly so GCC cannot hoist the common PA8 HIGH store above the bit branch
+ * or turn the short 12-NOP delay back into a C loop.
+ *
+ * WB32 GPIOA base: 0x40000000
+ * BSRR-like write register: base + 0x18
+ * PA8 SET mask:   0x00000100
+ * PA8 RESET mask: 0x01000000
+ */
+__attribute__((naked, noinline)) void sendByte(uint8_t byte) {
+    __asm__ volatile(
+        "push {r4, r5, r6}\n\t"
+        "movs r2, #7\n\t"
+        "movs r4, #1\n\t"
+        "mov.w r1, #0x40000000\n\t"
+        "mov.w r6, #0x100\n\t"
+        "mov.w r5, #0x1000000\n\t"
+        "b 6f\n\t"
+
+        // Common short LOW path used after a 1-bit.
+        "1:\n\t"
+        "str r5, [r1, #0x18]\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+
+        // Advance to next bit.
+        "2:\n\t"
+        "subs r2, #1\n\t"
+        "cmp.w r2, #0xffffffff\n\t"
+        "beq 9f\n\t"
+
+        // Decide 0/1 BEFORE PA8 is driven HIGH.
+        "6:\n\t"
+        "lsl.w r3, r4, r2\n\t"
+        "tst r3, r0\n\t"
+        "beq 7f\n\t"
+
+        // Bit = 1: HIGH -> 5 x (6 NOP + loop overhead), then short LOW path.
+        "str r6, [r1, #0x18]\n\t"
+        "movs r3, #5\n\t"
+        "3:\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "subs r3, #1\n\t"
+        "bne 3b\n\t"
+        "b 1b\n\t"
+
+        // Bit = 0: HIGH -> exactly 12 direct NOPs -> LOW -> long LOW delay.
+        "7:\n\t"
+        "str r6, [r1, #0x18]\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "str r5, [r1, #0x18]\n\t"
+        "movs r3, #5\n\t"
+        "8:\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "nop\n\t"
+        "subs r3, #1\n\t"
+        "bne 8b\n\t"
+        "b 2b\n\t"
+
+        "9:\n\t"
+        "pop {r4, r5, r6}\n\t"
+        "bx lr\n\t"
+    );
+}
+
+#else
+
+// Verhindert aggressive Inlining- und Loop-Verschiebungen durch GCC 15+ für alle anderen Boards
+__attribute__((noinline, optimize("O1")))
 void sendByte(uint8_t byte) {
     // WS2812 protocol wants most significant bits first
     for (unsigned char bit = 0; bit < 8; bit++) {
@@ -75,6 +199,8 @@ void sendByte(uint8_t byte) {
         }
     }
 }
+
+#endif
 
 ws2812_led_t ws2812_leds[WS2812_LED_COUNT];
 
