@@ -124,7 +124,7 @@ __attribute__((weak)) combo_t* combo_get(uint16_t combo_idx) {
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Tap Dance
 
-#if defined(TAP_DANCE_ENABLE)
+#if defined(TAP_DANCE_ENABLE) && !defined(VIAL_TAP_DANCE_ENABLE)
 
 uint16_t tap_dance_count_raw(void) {
     return ARRAY_SIZE(tap_dance_actions);
