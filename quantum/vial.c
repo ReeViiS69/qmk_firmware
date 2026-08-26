@@ -575,29 +575,35 @@ static void reload_combo(void) {
 }
 #endif
 
-#ifdef VIAL_TAP_DANCE_ENABLE
-void process_tap_dance_action_on_dance_finished(tap_dance_action_t *action);
-#endif
-
 bool process_record_vial(uint16_t keycode, keyrecord_t *record) {
 #ifdef VIAL_TAP_DANCE_ENABLE
     /* process releases before tap-dance timeout arrives */
     if (!record->event.pressed && keycode >= QK_TAP_DANCE && keycode <= QK_TAP_DANCE_MAX) {
-        uint16_t idx = keycode - QK_TAP_DANCE;
+        uint8_t idx = QK_TAP_DANCE_GET_INDEX(keycode);
+
         if (dynamic_keymap_get_tap_dance(idx, &td_entry) != 0)
             return true;
 
-        tap_dance_action_t *action = &tap_dance_actions[idx];
+        tap_dance_action_t *action = tap_dance_get(idx);
+        tap_dance_state_t  *state  = tap_dance_get_state(idx);
+
+        /*
+         * Modern QMK stores tap-dance runtime state separately from
+         * tap_dance_action_t. A release can legitimately arrive without
+         * an allocated state, in which case there is nothing to finish.
+         */
+        if (action == NULL || state == NULL)
+            return true;
 
         /* only care about 2 possibilities here
            - tap and hold set, everything else unset: process first release early (count == 1)
            - double tap set: process second release early (count == 2)
          */
-        if ((action->state.count == 1 && td_entry.on_tap && td_entry.on_hold && !td_entry.on_double_tap && !td_entry.on_tap_hold)
-            || (action->state.count == 2 && td_entry.on_double_tap)) {
-                action->state.pressed = false;
-                process_tap_dance_action_on_dance_finished(action);
-                /* reset_tap_dance() will get called in process_tap_dance() */
+        if ((state->count == 1 && td_entry.on_tap && td_entry.on_hold && !td_entry.on_double_tap && !td_entry.on_tap_hold)
+            || (state->count == 2 && td_entry.on_double_tap)) {
+                state->pressed = false;
+                process_tap_dance_action_on_dance_finished(action, state);
+                /* process_tap_dance() will reset the finished state on release */
             }
     }
 #endif

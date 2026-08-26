@@ -28,6 +28,10 @@
 #    include "qmk_settings.h"
 #endif
 
+#ifdef VIAL_TAP_DANCE_ENABLE
+#    include "action_tapping.h"
+#endif
+
 #ifdef ENCODER_ENABLE
 #    include "encoder.h"
 #else

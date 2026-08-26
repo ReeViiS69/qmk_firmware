@@ -2,7 +2,11 @@
 # Minimal feature set for initial bring-up.
 
 QMK_SETTINGS ?= no
-TAP_DANCE_ENABLE ?= no
+TAP_DANCE_ENABLE ?= yes
+ifeq ($(strip $(TAP_DANCE_ENABLE)), yes)
+    OPT_DEFS += -DTAPPING_TERM_PER_KEY
+endif
+
 COMBO_ENABLE ?= no
 KEY_OVERRIDE_ENABLE ?= no
 LAYER_LOCK_ENABLE ?= no
