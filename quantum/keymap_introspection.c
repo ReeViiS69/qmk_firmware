@@ -152,7 +152,7 @@ __attribute__((weak)) tap_dance_action_t* tap_dance_get(uint16_t tap_dance_idx) 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Key Overrides
 
-#if defined(KEY_OVERRIDE_ENABLE)
+#if defined(KEY_OVERRIDE_ENABLE) && !defined(VIAL_KEY_OVERRIDE_ENABLE)
 
 uint16_t key_override_count_raw(void) {
     return ARRAY_SIZE(key_overrides);

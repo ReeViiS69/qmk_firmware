@@ -8,7 +8,7 @@ ifeq ($(strip $(TAP_DANCE_ENABLE)), yes)
 endif
 
 COMBO_ENABLE ?= yes
-KEY_OVERRIDE_ENABLE ?= no
+KEY_OVERRIDE_ENABLE ?= yes
 LAYER_LOCK_ENABLE ?= no
 REPEAT_KEY_ENABLE ?= no
 
