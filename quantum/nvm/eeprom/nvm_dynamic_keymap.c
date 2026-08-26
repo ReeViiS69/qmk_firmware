@@ -137,10 +137,77 @@ void nvm_dynamic_keymap_read_buffer(uint32_t offset, uint32_t size, uint8_t *dat
     }
 }
 
+#ifdef VIAL_ENABLE
+#    include "vial.h"
+#endif
+
 void nvm_dynamic_keymap_update_buffer(uint32_t offset, uint32_t size, uint8_t *data) {
     uint32_t dynamic_keymap_eeprom_size = DYNAMIC_KEYMAP_LAYER_COUNT * MATRIX_ROWS * MATRIX_COLS * 2;
     void    *target                     = (void *)(uintptr_t)(DYNAMIC_KEYMAP_EEPROM_ADDR + offset);
     uint8_t *source                     = data;
+
+#ifdef VIAL_ENABLE
+    /*
+     * Vial expects an all-or-nothing bounded write.
+     * Do not allow a host packet to partially escape the dynamic keymap area.
+     */
+    if (offset >= dynamic_keymap_eeprom_size || size > dynamic_keymap_eeprom_size - offset) {
+        return;
+    }
+
+#    ifndef VIAL_INSECURE
+    /*
+     * A locked Vial keyboard must not allow QK_BOOT to be injected
+     * through a raw dynamic-keymap buffer write.
+     *
+     * Buffer writes may start/end in the middle of a 16-bit keycode,
+     * therefore the neighbouring EEPROM bytes must also be checked.
+     */
+    if (!vial_unlocked && size > 0) {
+        uint32_t chk_offset = 0;
+        uint32_t chk_size   = size;
+
+        /* First byte belongs to the low byte of an existing keycode. */
+        if ((offset & 1U) != 0) {
+            uint16_t keycode =
+                ((uint16_t)eeprom_read_byte((uint8_t *)target - 1) << 8) |
+                data[0];
+
+            if (keycode == QK_BOOT) {
+                data[0] = 0xFF;
+            }
+
+            chk_offset = 1;
+        }
+
+        /* Last byte belongs to the high byte of an existing keycode. */
+        if (((offset + size) & 1U) != 0) {
+            uint16_t keycode =
+                ((uint16_t)data[size - 1] << 8) |
+                eeprom_read_byte((uint8_t *)target + size);
+
+            if (keycode == QK_BOOT) {
+                data[size - 1] = 0xFF;
+            }
+
+            chk_size--;
+        }
+
+        /* Check all complete 16-bit keycodes inside the incoming buffer. */
+        for (uint32_t i = chk_offset; i + 1 < chk_size; i += 2) {
+            uint16_t keycode =
+                ((uint16_t)data[i] << 8) |
+                data[i + 1];
+
+            if (keycode == QK_BOOT) {
+                data[i]     = 0xFF;
+                data[i + 1] = 0xFF;
+            }
+        }
+    }
+#    endif
+#endif
+
     for (uint32_t i = 0; i < size; i++) {
         if (offset + i < dynamic_keymap_eeprom_size) {
             eeprom_update_byte(target, *source);
