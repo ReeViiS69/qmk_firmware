@@ -24,6 +24,10 @@
 #include <string.h>
 #include "nvm_dynamic_keymap.h"
 
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
+
 #ifdef ENCODER_ENABLE
 #    include "encoder.h"
 #else
@@ -60,6 +64,56 @@ void dynamic_keymap_set_encoder(uint8_t layer, uint8_t encoder_id, bool clockwis
 #    include "vial.h"
 #endif
 
+#ifdef QMK_SETTINGS
+uint8_t dynamic_keymap_get_qmk_settings(uint16_t offset) {
+    return nvm_dynamic_keymap_get_qmk_settings(offset);
+}
+
+void dynamic_keymap_set_qmk_settings(uint16_t offset, uint8_t value) {
+    nvm_dynamic_keymap_set_qmk_settings(offset, value);
+}
+#endif
+
+#ifdef VIAL_TAP_DANCE_ENABLE
+int dynamic_keymap_get_tap_dance(uint8_t index, vial_tap_dance_entry_t *entry) {
+    return nvm_dynamic_keymap_get_tap_dance(index, entry);
+}
+
+int dynamic_keymap_set_tap_dance(uint8_t index, const vial_tap_dance_entry_t *entry) {
+    return nvm_dynamic_keymap_set_tap_dance(index, entry);
+}
+#endif
+
+#ifdef VIAL_COMBO_ENABLE
+int dynamic_keymap_get_combo(uint8_t index, vial_combo_entry_t *entry) {
+    return nvm_dynamic_keymap_get_combo(index, entry);
+}
+
+int dynamic_keymap_set_combo(uint8_t index, const vial_combo_entry_t *entry) {
+    return nvm_dynamic_keymap_set_combo(index, entry);
+}
+#endif
+
+#ifdef VIAL_KEY_OVERRIDE_ENABLE
+int dynamic_keymap_get_key_override(uint8_t index, vial_key_override_entry_t *entry) {
+    return nvm_dynamic_keymap_get_key_override(index, entry);
+}
+
+int dynamic_keymap_set_key_override(uint8_t index, const vial_key_override_entry_t *entry) {
+    return nvm_dynamic_keymap_set_key_override(index, entry);
+}
+#endif
+
+#ifdef VIAL_ALT_REPEAT_KEY_ENABLE
+int dynamic_keymap_get_alt_repeat_key(uint8_t index, vial_alt_repeat_key_entry_t *entry) {
+    return nvm_dynamic_keymap_get_alt_repeat_key(index, entry);
+}
+
+int dynamic_keymap_set_alt_repeat_key(uint8_t index, const vial_alt_repeat_key_entry_t *entry) {
+    return nvm_dynamic_keymap_set_alt_repeat_key(index, entry);
+}
+#endif
+
 void dynamic_keymap_reset(void) {
 #ifdef VIAL_ENABLE
     /*
@@ -87,6 +141,55 @@ void dynamic_keymap_reset(void) {
         }
 #endif // ENCODER_MAP_ENABLE
     }
+
+#ifdef QMK_SETTINGS
+    qmk_settings_reset();
+#endif
+
+#ifdef VIAL_TAP_DANCE_ENABLE
+    {
+        vial_tap_dance_entry_t td = { KC_NO, KC_NO, KC_NO, KC_NO, TAPPING_TERM };
+
+        for (size_t i = 0; i < VIAL_TAP_DANCE_ENTRIES; ++i) {
+            dynamic_keymap_set_tap_dance(i, &td);
+        }
+    }
+#endif
+
+#ifdef VIAL_COMBO_ENABLE
+    {
+        vial_combo_entry_t combo = { 0 };
+
+        for (size_t i = 0; i < VIAL_COMBO_ENTRIES; ++i) {
+            dynamic_keymap_set_combo(i, &combo);
+        }
+    }
+#endif
+
+#ifdef VIAL_KEY_OVERRIDE_ENABLE
+    {
+        vial_key_override_entry_t ko = { 0 };
+
+        ko.layers  = ~0;
+        ko.options = vial_ko_option_activation_negative_mod_up |
+                     vial_ko_option_activation_required_mod_down |
+                     vial_ko_option_activation_trigger_down;
+
+        for (size_t i = 0; i < VIAL_KEY_OVERRIDE_ENTRIES; ++i) {
+            dynamic_keymap_set_key_override(i, &ko);
+        }
+    }
+#endif
+
+#ifdef VIAL_ALT_REPEAT_KEY_ENABLE
+    {
+        vial_alt_repeat_key_entry_t arep = { 0 };
+
+        for (size_t i = 0; i < VIAL_ALT_REPEAT_KEY_ENTRIES; ++i) {
+            dynamic_keymap_set_alt_repeat_key(i, &arep);
+        }
+    }
+#endif
 
 #ifdef VIAL_ENABLE
     /* Restore the previous Vial lock state. */
@@ -140,6 +243,8 @@ static uint8_t dynamic_keymap_read_byte(uint32_t offset) {
     return d;
 }
 
+#ifdef VIAL_ENABLE
+
 static uint16_t decode_keycode(uint16_t keycode) {
     /*
      * Vial encodes keycodes with a zero low-byte specially because
@@ -156,6 +261,21 @@ static uint16_t decode_keycode(uint16_t keycode) {
     return keycode;
 }
 
+#else // VIAL_ENABLE
+
+typedef struct send_string_nvm_state_t {
+    uint32_t offset;
+} send_string_nvm_state_t;
+
+char send_string_get_next_nvm(void *arg) {
+    send_string_nvm_state_t *state = (send_string_nvm_state_t *)arg;
+    char                     ret   = dynamic_keymap_read_byte(state->offset);
+    state->offset++;
+    return ret;
+}
+
+#endif // VIAL_ENABLE
+
 void dynamic_keymap_macro_reset(void) {
     // Erase the macros, if necessary.
     nvm_dynamic_keymap_macro_erase();
@@ -163,6 +283,7 @@ void dynamic_keymap_macro_reset(void) {
 }
 
 void dynamic_keymap_macro_send(uint8_t id) {
+#ifdef VIAL_ENABLE
     if (id >= DYNAMIC_KEYMAP_MACRO_COUNT) {
         return;
     }
@@ -304,4 +425,41 @@ void dynamic_keymap_macro_send(uint8_t id) {
             send_string_with_delay(data, DYNAMIC_KEYMAP_MACRO_DELAY);
         }
     }
+
+#else // VIAL_ENABLE
+    if (id >= DYNAMIC_KEYMAP_MACRO_COUNT) {
+        return;
+    }
+
+    // Check the last byte of the buffer.
+    // If it's not zero, then we are in the middle
+    // of buffer writing, possibly an aborted buffer
+    // write. So do nothing.
+    if (dynamic_keymap_read_byte(nvm_dynamic_keymap_macro_size() - 1) != 0) {
+        return;
+    }
+
+    // Skip N null characters
+    // p will then point to the Nth macro
+    uint32_t offset = 0;
+    uint32_t end    = nvm_dynamic_keymap_macro_size();
+
+    while (id > 0) {
+        // If we are past the end of the buffer, then there is
+        // no Nth macro in the buffer.
+        if (offset == end) {
+            return;
+        }
+
+        if (dynamic_keymap_read_byte(offset) == 0) {
+            --id;
+        }
+
+        ++offset;
+    }
+
+    send_string_nvm_state_t state = {.offset = offset};
+    send_string_with_delay_impl(send_string_get_next_nvm, &state, DYNAMIC_KEYMAP_MACRO_DELAY);
+
+#endif // VIAL_ENABLE
 }

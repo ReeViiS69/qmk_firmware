@@ -9,10 +9,16 @@
 #include "nvm_eeprom_eeconfig_internal.h"
 #include "nvm_eeprom_via_internal.h"
 
+#ifdef VIAL_ENABLE
+#    include "vial.h"
+#endif
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifdef ENCODER_ENABLE
 #    include "encoder.h"
+#elif defined(VIAL_ENABLE)
+#    define NUM_ENCODERS 0
 #endif
 
 #ifdef VIA_ENABLE
@@ -36,21 +42,87 @@ STATIC_ASSERT(DYNAMIC_KEYMAP_EEPROM_MAX_ADDR <= 65535, "DYNAMIC_KEYMAP_EEPROM_MA
 #    define DYNAMIC_KEYMAP_EEPROM_ADDR DYNAMIC_KEYMAP_EEPROM_START
 #endif
 
-// Dynamic encoders starts after dynamic keymaps
-#ifndef DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR
-#    define DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR (DYNAMIC_KEYMAP_EEPROM_ADDR + (DYNAMIC_KEYMAP_LAYER_COUNT * MATRIX_ROWS * MATRIX_COLS * 2))
-#endif
+#ifdef VIAL_ENABLE
 
-// Dynamic macro starts after dynamic encoders, but only when using ENCODER_MAP
-#ifdef ENCODER_MAP_ENABLE
+// Encoders are located immediately after the dynamic keymap.
+#    define VIAL_ENCODERS_EEPROM_ADDR (DYNAMIC_KEYMAP_EEPROM_ADDR + (DYNAMIC_KEYMAP_LAYER_COUNT * MATRIX_ROWS * MATRIX_COLS * 2))
+
+#    ifndef DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR
+#        define DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR VIAL_ENCODERS_EEPROM_ADDR
+#    endif
+
+#    define VIAL_ENCODERS_SIZE (NUM_ENCODERS * DYNAMIC_KEYMAP_LAYER_COUNT * 2 * 2)
+
+// QMK Settings are located immediately after the encoder area.
+#    define VIAL_QMK_SETTINGS_EEPROM_ADDR (VIAL_ENCODERS_EEPROM_ADDR + VIAL_ENCODERS_SIZE)
+
+#    ifdef QMK_SETTINGS
+#        include "qmk_settings.h"
+#        define VIAL_QMK_SETTINGS_SIZE (sizeof(qmk_settings_t))
+#    else
+#        define VIAL_QMK_SETTINGS_SIZE 0
+#    endif
+
+// Tap Dance.
+#    define VIAL_TAP_DANCE_EEPROM_ADDR (VIAL_QMK_SETTINGS_EEPROM_ADDR + VIAL_QMK_SETTINGS_SIZE)
+
+#    ifdef VIAL_TAP_DANCE_ENABLE
+#        define VIAL_TAP_DANCE_SIZE (sizeof(vial_tap_dance_entry_t) * VIAL_TAP_DANCE_ENTRIES)
+#    else
+#        define VIAL_TAP_DANCE_SIZE 0
+#    endif
+
+// Combos.
+#    define VIAL_COMBO_EEPROM_ADDR (VIAL_TAP_DANCE_EEPROM_ADDR + VIAL_TAP_DANCE_SIZE)
+
+#    ifdef VIAL_COMBO_ENABLE
+#        define VIAL_COMBO_SIZE (sizeof(vial_combo_entry_t) * VIAL_COMBO_ENTRIES)
+#    else
+#        define VIAL_COMBO_SIZE 0
+#    endif
+
+// Key Overrides.
+#    define VIAL_KEY_OVERRIDE_EEPROM_ADDR (VIAL_COMBO_EEPROM_ADDR + VIAL_COMBO_SIZE)
+
+#    ifdef VIAL_KEY_OVERRIDE_ENABLE
+#        define VIAL_KEY_OVERRIDE_SIZE (sizeof(vial_key_override_entry_t) * VIAL_KEY_OVERRIDE_ENTRIES)
+#    else
+#        define VIAL_KEY_OVERRIDE_SIZE 0
+#    endif
+
+// Alt Repeat Key.
+#    define VIAL_ALT_REPEAT_KEY_EEPROM_ADDR (VIAL_KEY_OVERRIDE_EEPROM_ADDR + VIAL_KEY_OVERRIDE_SIZE)
+
+#    ifdef VIAL_ALT_REPEAT_KEY_ENABLE
+#        define VIAL_ALT_REPEAT_KEY_SIZE (sizeof(vial_alt_repeat_key_entry_t) * VIAL_ALT_REPEAT_KEY_ENTRIES)
+#    else
+#        define VIAL_ALT_REPEAT_KEY_SIZE 0
+#    endif
+
+// Dynamic macros occupy all EEPROM remaining after the Vial feature areas.
 #    ifndef DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR
-#        define DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR (DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR + (DYNAMIC_KEYMAP_LAYER_COUNT * NUM_ENCODERS * 2 * 2))
-#    endif // DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR
-#else      // ENCODER_MAP_ENABLE
-#    ifndef DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR
-#        define DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR (DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR)
-#    endif // DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR
-#endif     // ENCODER_MAP_ENABLE
+#        define DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR (VIAL_ALT_REPEAT_KEY_EEPROM_ADDR + VIAL_ALT_REPEAT_KEY_SIZE)
+#    endif
+
+#else // VIAL_ENABLE
+
+// Dynamic encoders starts after dynamic keymaps.
+#    ifndef DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR
+#        define DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR (DYNAMIC_KEYMAP_EEPROM_ADDR + (DYNAMIC_KEYMAP_LAYER_COUNT * MATRIX_ROWS * MATRIX_COLS * 2))
+#    endif
+
+// Dynamic macro starts after dynamic encoders, but only when using ENCODER_MAP.
+#    ifdef ENCODER_MAP_ENABLE
+#        ifndef DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR
+#            define DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR (DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR + (DYNAMIC_KEYMAP_LAYER_COUNT * NUM_ENCODERS * 2 * 2))
+#        endif
+#    else
+#        ifndef DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR
+#            define DYNAMIC_KEYMAP_MACRO_EEPROM_ADDR (DYNAMIC_KEYMAP_ENCODER_EEPROM_ADDR)
+#        endif
+#    endif
+
+#endif // VIAL_ENABLE
 
 // Sanity check that dynamic keymaps fit in available EEPROM
 // If there's not 100 bytes available for macros, then something is wrong.
@@ -136,10 +208,6 @@ void nvm_dynamic_keymap_read_buffer(uint32_t offset, uint32_t size, uint8_t *dat
         target++;
     }
 }
-
-#ifdef VIAL_ENABLE
-#    include "vial.h"
-#endif
 
 void nvm_dynamic_keymap_update_buffer(uint32_t offset, uint32_t size, uint8_t *data) {
     uint32_t dynamic_keymap_eeprom_size = DYNAMIC_KEYMAP_LAYER_COUNT * MATRIX_ROWS * MATRIX_COLS * 2;
@@ -259,3 +327,160 @@ void nvm_dynamic_keymap_macro_reset(void) {
         remaining -= this_loop;
     }
 }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Vial dynamic feature storage
+
+#ifdef QMK_SETTINGS
+
+uint8_t nvm_dynamic_keymap_get_qmk_settings(uint16_t offset) {
+    if (offset >= VIAL_QMK_SETTINGS_SIZE) {
+        return 0;
+    }
+
+    void *address = (void *)(uintptr_t)(VIAL_QMK_SETTINGS_EEPROM_ADDR + offset);
+    return eeprom_read_byte(address);
+}
+
+void nvm_dynamic_keymap_set_qmk_settings(uint16_t offset, uint8_t value) {
+    if (offset >= VIAL_QMK_SETTINGS_SIZE) {
+        return;
+    }
+
+    void *address = (void *)(uintptr_t)(VIAL_QMK_SETTINGS_EEPROM_ADDR + offset);
+    eeprom_update_byte(address, value);
+}
+
+#endif // QMK_SETTINGS
+
+
+#ifdef VIAL_TAP_DANCE_ENABLE
+
+int nvm_dynamic_keymap_get_tap_dance(uint8_t index, vial_tap_dance_entry_t *entry) {
+    if (index >= VIAL_TAP_DANCE_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_TAP_DANCE_EEPROM_ADDR +
+        index * sizeof(vial_tap_dance_entry_t)
+    );
+
+    eeprom_read_block(entry, address, sizeof(vial_tap_dance_entry_t));
+    return 0;
+}
+
+int nvm_dynamic_keymap_set_tap_dance(uint8_t index, const vial_tap_dance_entry_t *entry) {
+    if (index >= VIAL_TAP_DANCE_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_TAP_DANCE_EEPROM_ADDR +
+        index * sizeof(vial_tap_dance_entry_t)
+    );
+
+    eeprom_write_block(entry, address, sizeof(vial_tap_dance_entry_t));
+    return 0;
+}
+
+#endif // VIAL_TAP_DANCE_ENABLE
+
+
+#ifdef VIAL_COMBO_ENABLE
+
+int nvm_dynamic_keymap_get_combo(uint8_t index, vial_combo_entry_t *entry) {
+    if (index >= VIAL_COMBO_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_COMBO_EEPROM_ADDR +
+        index * sizeof(vial_combo_entry_t)
+    );
+
+    eeprom_read_block(entry, address, sizeof(vial_combo_entry_t));
+    return 0;
+}
+
+int nvm_dynamic_keymap_set_combo(uint8_t index, const vial_combo_entry_t *entry) {
+    if (index >= VIAL_COMBO_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_COMBO_EEPROM_ADDR +
+        index * sizeof(vial_combo_entry_t)
+    );
+
+    eeprom_write_block(entry, address, sizeof(vial_combo_entry_t));
+    return 0;
+}
+
+#endif // VIAL_COMBO_ENABLE
+
+
+#ifdef VIAL_KEY_OVERRIDE_ENABLE
+
+int nvm_dynamic_keymap_get_key_override(uint8_t index, vial_key_override_entry_t *entry) {
+    if (index >= VIAL_KEY_OVERRIDE_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_KEY_OVERRIDE_EEPROM_ADDR +
+        index * sizeof(vial_key_override_entry_t)
+    );
+
+    eeprom_read_block(entry, address, sizeof(vial_key_override_entry_t));
+    return 0;
+}
+
+int nvm_dynamic_keymap_set_key_override(uint8_t index, const vial_key_override_entry_t *entry) {
+    if (index >= VIAL_KEY_OVERRIDE_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_KEY_OVERRIDE_EEPROM_ADDR +
+        index * sizeof(vial_key_override_entry_t)
+    );
+
+    eeprom_write_block(entry, address, sizeof(vial_key_override_entry_t));
+    return 0;
+}
+
+#endif // VIAL_KEY_OVERRIDE_ENABLE
+
+
+#ifdef VIAL_ALT_REPEAT_KEY_ENABLE
+
+int nvm_dynamic_keymap_get_alt_repeat_key(uint8_t index, vial_alt_repeat_key_entry_t *entry) {
+    if (index >= VIAL_ALT_REPEAT_KEY_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_ALT_REPEAT_KEY_EEPROM_ADDR +
+        index * sizeof(vial_alt_repeat_key_entry_t)
+    );
+
+    eeprom_read_block(entry, address, sizeof(vial_alt_repeat_key_entry_t));
+    return 0;
+}
+
+int nvm_dynamic_keymap_set_alt_repeat_key(uint8_t index, const vial_alt_repeat_key_entry_t *entry) {
+    if (index >= VIAL_ALT_REPEAT_KEY_ENTRIES) {
+        return -1;
+    }
+
+    void *address = (void *)(uintptr_t)(
+        VIAL_ALT_REPEAT_KEY_EEPROM_ADDR +
+        index * sizeof(vial_alt_repeat_key_entry_t)
+    );
+
+    eeprom_write_block(entry, address, sizeof(vial_alt_repeat_key_entry_t));
+    return 0;
+}
+
+#endif // VIAL_ALT_REPEAT_KEY_ENABLE
