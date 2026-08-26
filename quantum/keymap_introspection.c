@@ -98,7 +98,7 @@ __attribute__((weak)) uint16_t keycode_at_dip_switch_map_location(uint8_t switch
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Combos
 
-#if defined(COMBO_ENABLE)
+#if defined(COMBO_ENABLE) && !defined(VIAL_COMBO_ENABLE)
 
 uint16_t combo_count_raw(void) {
     return ARRAY_SIZE(key_combos);
