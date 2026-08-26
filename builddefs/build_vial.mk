@@ -7,7 +7,7 @@ ifeq ($(strip $(TAP_DANCE_ENABLE)), yes)
     OPT_DEFS += -DTAPPING_TERM_PER_KEY
 endif
 
-COMBO_ENABLE ?= no
+COMBO_ENABLE ?= yes
 KEY_OVERRIDE_ENABLE ?= no
 LAYER_LOCK_ENABLE ?= no
 REPEAT_KEY_ENABLE ?= no
