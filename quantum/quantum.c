@@ -293,6 +293,10 @@ void post_process_record_quantum(keyrecord_t *record) {
  *
  * Hands off handling to other quantum/process_keycode/ functions
  */
+#ifdef VIAL_ENABLE
+#    include "vial.h"
+#endif
+
 bool process_record_quantum(keyrecord_t *record) {
     uint16_t keycode = get_record_keycode(record, true);
 
@@ -355,6 +359,9 @@ bool process_record_quantum(keyrecord_t *record) {
             process_record_kb(keycode, record) &&
 #if defined(VIA_ENABLE)
             process_record_via(keycode, record) &&
+#endif
+#if defined(VIAL_ENABLE)
+            process_record_vial(keycode, record) &&
 #endif
 #if defined(SECURE_ENABLE)
             process_secure(keycode, record) &&

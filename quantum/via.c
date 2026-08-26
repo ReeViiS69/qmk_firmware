@@ -72,10 +72,16 @@
 // Can be called in an overriding via_init_kb() to test if keyboard level code usage of
 // EEPROM is invalid and use/save defaults.
 bool via_eeprom_is_valid(void) {
+#ifdef VIAL_ENABLE
+    uint8_t magic0 = BUILD_ID & 0xFF;
+    uint8_t magic1 = (BUILD_ID >> 8) & 0xFF;
+    uint8_t magic2 = (BUILD_ID >> 16) & 0xFF;
+#else
     char   *p      = QMK_BUILDDATE; // e.g. "2019-11-05-11:29:54"
     uint8_t magic0 = ((p[2] & 0x0F) << 4) | (p[3] & 0x0F);
     uint8_t magic1 = ((p[5] & 0x0F) << 4) | (p[6] & 0x0F);
     uint8_t magic2 = ((p[8] & 0x0F) << 4) | (p[9] & 0x0F);
+#endif
 
     uint8_t ee_magic0;
     uint8_t ee_magic1;
@@ -89,10 +95,16 @@ bool via_eeprom_is_valid(void) {
 // Keyboard level code (eg. via_init_kb()) should not call this
 void via_eeprom_set_valid(bool valid) {
     if (valid) {
+#ifdef VIAL_ENABLE
+        uint8_t magic0 = BUILD_ID & 0xFF;
+        uint8_t magic1 = (BUILD_ID >> 8) & 0xFF;
+        uint8_t magic2 = (BUILD_ID >> 16) & 0xFF;
+#else
         char   *p      = QMK_BUILDDATE; // e.g. "2019-11-05-11:29:54"
         uint8_t magic0 = ((p[2] & 0x0F) << 4) | (p[3] & 0x0F);
         uint8_t magic1 = ((p[5] & 0x0F) << 4) | (p[6] & 0x0F);
         uint8_t magic2 = ((p[8] & 0x0F) << 4) | (p[9] & 0x0F);
+#endif
         nvm_via_update_magic(magic0, magic1, magic2);
     } else {
         nvm_via_update_magic(0xFF, 0xFF, 0xFF);
@@ -295,6 +307,32 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
     uint8_t *command_id   = &(data[0]);
     uint8_t *command_data = &(data[1]);
 
+#ifdef VIAL_ENABLE
+    /*
+     * While the physical unlock gesture is in progress, only commands
+     * required to identify the keyboard and complete the unlock may run.
+     *
+     * This intentionally happens before via_command_kb(), so keyboard-level
+     * VIA handlers cannot bypass the Vial unlock state.
+     */
+    if (vial_unlock_in_progress) {
+        if (data[0] != id_vial_prefix) {
+            goto vial_skip;
+        }
+
+        uint8_t vial_command = data[1];
+
+        if (vial_command != vial_get_keyboard_id &&
+            vial_command != vial_get_size &&
+            vial_command != vial_get_def &&
+            vial_command != vial_get_unlock_status &&
+            vial_command != vial_unlock_start &&
+            vial_command != vial_unlock_poll) {
+            goto vial_skip;
+        }
+    }
+#endif
+
     // If via_command_kb() returns true, the command was fully
     // handled, including calling raw_hid_send()
     if (via_command_kb(data, length)) {
@@ -326,11 +364,18 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
                     break;
                 }
                 case id_switch_matrix_state: {
+#ifdef VIAL_ENABLE
+                    /* Do not expose the live switch matrix while Vial is locked. */
+                    if (!vial_unlocked) {
+                        goto vial_skip;
+                    }
+#endif
+
                     uint8_t offset = command_data[1];
                     uint8_t rows   = 28 / ((MATRIX_COLS + 7) / 8);
                     uint8_t i      = 2;
                     for (uint8_t row = 0; row < rows && row + offset < MATRIX_ROWS; row++) {
-#if defined(VIA_INSECURE)
+#if defined(VIAL_ENABLE) || defined(VIA_INSECURE)
                         matrix_row_t value = matrix_get_row(row + offset);
 #elif defined(SECURE_ENABLE)
                         matrix_row_t value = 0;
@@ -439,13 +484,24 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         case id_dynamic_keymap_macro_get_buffer: {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_macro_get_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_macro_get_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
         case id_dynamic_keymap_macro_set_buffer: {
+#ifdef VIAL_ENABLE
+            /* Until Vial is unlocked, do not allow changing macros. */
+            if (!vial_unlocked) {
+                goto vial_skip;
+            }
+#endif
+
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_macro_set_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_macro_set_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
         case id_dynamic_keymap_macro_reset: {
@@ -459,15 +515,38 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         case id_dynamic_keymap_get_buffer: {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_get_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_get_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
         case id_dynamic_keymap_set_buffer: {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_set_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_set_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
+
+#if defined(VIAL_ENABLE) && !defined(VIAL_INSECURE)
+        case id_bootloader_jump: {
+            /* A locked Vial keyboard may not be remotely rebooted to bootloader. */
+            if (!vial_unlocked) {
+                goto vial_skip;
+            }
+
+            /*
+             * Acknowledge before jumping, otherwise the host loses the
+             * USB device before it receives the response.
+             */
+            raw_hid_send(data, length);
+            wait_ms(100);
+            bootloader_jump();
+            break;
+        }
+#endif
+
 #ifdef ENCODER_MAP_ENABLE
         case id_dynamic_keymap_get_encoder: {
             uint16_t keycode = dynamic_keymap_get_encoder(command_data[0], command_data[1], command_data[2] != 0);
@@ -494,6 +573,9 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         }
     }
 
+#ifdef VIAL_ENABLE
+vial_skip:
+#endif
     // Return the same buffer, optionally with values changed
     // (i.e. returning state to the host, or the unhandled state).
     raw_hid_send(data, length);

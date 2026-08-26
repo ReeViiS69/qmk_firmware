@@ -41,6 +41,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #    include "process_midi.h"
 #endif
 
+#ifdef VIAL_ENABLE
+#    include "vial.h"
+#endif
+
 extern keymap_config_t keymap_config;
 
 /* converts key to action */
@@ -196,6 +200,18 @@ action_t action_for_keycode(uint16_t keycode) {
 
 // translates key to keycode
 __attribute__((weak)) uint16_t keymap_key_to_keycode(uint8_t layer, keypos_t key) {
+#ifdef VIAL_ENABLE
+    /* Disable normal keycode processing while Vial unlock is in progress. */
+    if (vial_unlock_in_progress) {
+        return KC_NO;
+    }
+
+    /* Virtual matrix position used by Vial for 16-bit keycode execution. */
+    if (key.row == VIAL_MATRIX_MAGIC && key.col == VIAL_MATRIX_MAGIC) {
+        return g_vial_magic_keycode_override;
+    }
+#endif
+
     if (key.row < MATRIX_ROWS && key.col < MATRIX_COLS) {
         return keycode_at_keymap_location(layer, key.row, key.col);
     }
