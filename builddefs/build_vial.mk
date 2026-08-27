@@ -10,7 +10,7 @@ endif
 
 COMBO_ENABLE ?= yes
 KEY_OVERRIDE_ENABLE ?= yes
-LAYER_LOCK_ENABLE ?= no
+LAYER_LOCK_ENABLE ?= yes
 REPEAT_KEY_ENABLE ?= yes
 
 SRC += $(QUANTUM_DIR)/vial.c
