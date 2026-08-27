@@ -2,6 +2,7 @@
 # Minimal feature set for initial bring-up.
 
 QMK_SETTINGS ?= no
+CAPS_WORD_ENABLE ?= yes
 TAP_DANCE_ENABLE ?= yes
 ifeq ($(strip $(TAP_DANCE_ENABLE)), yes)
     OPT_DEFS += -DTAPPING_TERM_PER_KEY
@@ -10,7 +11,7 @@ endif
 COMBO_ENABLE ?= yes
 KEY_OVERRIDE_ENABLE ?= yes
 LAYER_LOCK_ENABLE ?= no
-REPEAT_KEY_ENABLE ?= no
+REPEAT_KEY_ENABLE ?= yes
 
 SRC += $(QUANTUM_DIR)/vial.c
 
