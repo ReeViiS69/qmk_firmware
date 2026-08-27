@@ -359,6 +359,9 @@ __attribute__((weak)) bool matrix_can_read(void) {
 #ifdef VIAL_ENABLE
 #    include "vial.h"
 #endif
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
 
 void keyboard_setup(void) {
     print_set_sendchar(sendchar);
@@ -367,6 +370,9 @@ void keyboard_setup(void) {
 #endif
 #ifdef VIAL_ENABLE
     vial_init();
+#endif
+#ifdef QMK_SETTINGS
+    qmk_settings_init();
 #endif
     matrix_setup();
     keyboard_pre_init_quantum();

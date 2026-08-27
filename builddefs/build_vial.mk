@@ -1,7 +1,7 @@
 # Vial forward-port for modern QMK
 # Minimal feature set for initial bring-up.
 
-QMK_SETTINGS ?= no
+QMK_SETTINGS ?= yes
 CAPS_WORD_ENABLE ?= yes
 TAP_DANCE_ENABLE ?= yes
 ifeq ($(strip $(TAP_DANCE_ENABLE)), yes)
@@ -20,6 +20,15 @@ OPT_DEFS += -DVIAL_ENABLE -DSERIAL_NUMBER=\"vial:f64c2b3c\"
 
 ifeq ($(strip $(VIAL_INSECURE)), yes)
     OPT_DEFS += -DVIAL_INSECURE
+endif
+
+ifeq ($(strip $(QMK_SETTINGS)), yes)
+    AUTO_SHIFT_ENABLE := yes
+    SRC += $(QUANTUM_DIR)/qmk_settings.c
+    OPT_DEFS += -DQMK_SETTINGS \
+        -DAUTO_SHIFT_NO_SETUP -DAUTO_SHIFT_REPEAT_PER_KEY -DAUTO_SHIFT_NO_AUTO_REPEAT_PER_KEY \
+        -DPERMISSIVE_HOLD_PER_KEY -DHOLD_ON_OTHER_KEY_PRESS_PER_KEY -DQUICK_TAP_TERM_PER_KEY -DRETRO_TAPPING_PER_KEY \
+        -DCOMBO_TERM_PER_COMBO -DCHORDAL_HOLD -DFLOW_TAP_TERM=321
 endif
 
 # Generate compressed Vial keyboard definition from vial.json.
