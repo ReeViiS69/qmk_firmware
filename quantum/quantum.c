@@ -15,6 +15,10 @@
  */
 
 #include "quantum.h"
+
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
 #include "process_quantum.h"
 
 #ifdef SLEEP_LED_ENABLE
@@ -153,7 +157,11 @@ __attribute__((weak)) void unregister_code16(uint16_t code) {
  */
 __attribute__((weak)) void tap_code16_delay(uint16_t code, uint16_t delay) {
     register_code16(code);
+#ifdef QMK_SETTINGS
+    qs_wait_ms(delay);
+#else
     wait_ms(delay);
+#endif
     unregister_code16(code);
 }
 
@@ -162,7 +170,11 @@ __attribute__((weak)) void tap_code16_delay(uint16_t code, uint16_t delay) {
  * \param code The modded keycode to tap. If `code` is `KC_CAPS_LOCK`, the delay will be `TAP_HOLD_CAPS_DELAY`, otherwise `TAP_CODE_DELAY`, if defined.
  */
 __attribute__((weak)) void tap_code16(uint16_t code) {
+#ifdef QMK_SETTINGS
+    tap_code16_delay(code, code == KC_CAPS_LOCK ? QS_tap_hold_caps_delay : QS_tap_code_delay);
+#else
     tap_code16_delay(code, code == KC_CAPS_LOCK ? TAP_HOLD_CAPS_DELAY : TAP_CODE_DELAY);
+#endif
 }
 
 __attribute__((weak)) bool pre_process_record_modules(uint16_t keycode, keyrecord_t *record) {
