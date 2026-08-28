@@ -463,6 +463,25 @@ bool rgb_matrix_indicators_user(void) {
 }
 #endif
 
+
+#if defined(RGB_MATRIX_ENABLE) && defined(VIALRGB_ENABLE)
+/*
+ * Some framebuffer effects such as DIGITAL_RAIN render the complete matrix
+ * in one pass instead of respecting the normal RGB Matrix LED processing
+ * limits. Apply the Vial-only LED_FLAG_NONE invariant once after the complete
+ * animation frame has finished rendering and immediately before it is flushed.
+ */
+bool rgb_matrix_indicators_user(void) {
+    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; ++i) {
+        if (g_led_config.flags[i] == LED_FLAG_NONE) {
+            rgb_matrix_set_color(i, 0, 0, 0);
+        }
+    }
+
+    return true;
+}
+#endif
+
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
     [0] = LAYOUT_all(

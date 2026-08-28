@@ -52,10 +52,10 @@ static const PROGMEM vialrgb_supported_mode_t supported_modes[] = {
     {VIALRGB_EFFECT_OFF, 0},
 
     /*
-     * Modern Direct mode will be registered as a QMK custom-user effect
-     * in Phase 5B.
+     * Direct mode is registered through QMK's modern custom-user
+     * RGB Matrix effect mechanism.
      */
-#if !defined(VIALRGB_NO_DIRECT) && defined(RGB_MATRIX_CUSTOM_USER)
+#ifdef VIALRGB_DIRECT_ENABLE
     {VIALRGB_EFFECT_DIRECT, RGB_MATRIX_CUSTOM_VIALRGB_DIRECT},
 #endif
 
