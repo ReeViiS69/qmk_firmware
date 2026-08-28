@@ -17,8 +17,8 @@ typedef struct {
 
 #define SUPPORTED_MODES_LENGTH (sizeof(supported_modes)/sizeof(*supported_modes))
 
-#ifdef RGB_MATRIX_EFFECT_VIALRGB_DIRECT
-HSV g_direct_mode_colors[RGB_MATRIX_LED_COUNT];
+#ifdef VIALRGB_DIRECT_ENABLE
+hsv_t g_direct_mode_colors[RGB_MATRIX_LED_COUNT];
 #endif
 
 static void get_supported(uint8_t *args, uint8_t length) {
@@ -73,7 +73,7 @@ static void set_mode(uint16_t mode) {
     }
 }
 
-#ifdef RGB_MATRIX_EFFECT_VIALRGB_DIRECT
+#ifdef VIALRGB_DIRECT_ENABLE
 static void get_matrix_pos_for_led(uint16_t led, uint8_t *output) {
     /* reset initially so if we cannot locate the led, it's considered not part of kb matrix */
     output[0] = output[1] = 0xFF;
@@ -136,14 +136,14 @@ void vialrgb_get_value(uint8_t *data, uint8_t length) {
         get_supported(args, length - 2);
         break;
     }
-#ifdef RGB_MATRIX_EFFECT_VIALRGB_DIRECT
+#ifdef VIALRGB_DIRECT_ENABLE
     case vialrgb_get_number_leds: {
         args[0] = RGB_MATRIX_LED_COUNT & 0xFF;
         args[1] = RGB_MATRIX_LED_COUNT >> 8;
         break;
     }
     case vialrgb_get_led_info: {
-        uint16_t led = (args[0] & 0xFF) | (args[1] >> 8);
+        uint16_t led = args[0] | ((uint16_t)args[1] << 8);
         if (led >= RGB_MATRIX_LED_COUNT) return;
         // x, y
         args[0] = g_led_config.point[led].x;
@@ -172,9 +172,9 @@ void vialrgb_set_value(uint8_t *data, uint8_t length) {
         rgb_matrix_sethsv_noeeprom(args[3], args[4], args[5]);
         break;
     }
-#ifdef RGB_MATRIX_EFFECT_VIALRGB_DIRECT
+#ifdef VIALRGB_DIRECT_ENABLE
     case vialrgb_direct_fastset: {
-        fast_set_leds(args, length);
+        fast_set_leds(args, length - 2);
         break;
     }
 #endif

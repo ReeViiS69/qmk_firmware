@@ -6,6 +6,10 @@
 
 #define VIALRGB_PROTOCOL_VERSION 1
 
+#if defined(VIALRGB_ENABLE) && !defined(VIALRGB_NO_DIRECT) && defined(RGB_MATRIX_CUSTOM_USER)
+#    define VIALRGB_DIRECT_ENABLE
+#endif
+
 /* Start at 0x40 in order to not conflict with existing "enum via_lighting_value",
    even though they likely wouldn't be enabled together with vialrgb */
 enum {
