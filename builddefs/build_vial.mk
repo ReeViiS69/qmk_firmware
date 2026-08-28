@@ -22,6 +22,15 @@ ifeq ($(strip $(VIAL_INSECURE)), yes)
     OPT_DEFS += -DVIAL_INSECURE
 endif
 
+ifeq ($(strip $(VIALRGB_ENABLE)), yes)
+    SRC += $(QUANTUM_DIR)/vialrgb.c
+    OPT_DEFS += -DVIALRGB_ENABLE
+
+    ifeq ($(strip $(VIALRGB_NO_DIRECT)), yes)
+        OPT_DEFS += -DVIALRGB_NO_DIRECT
+    endif
+endif
+
 ifeq ($(strip $(QMK_SETTINGS)), yes)
     AUTO_SHIFT_ENABLE := yes
     SRC += $(QUANTUM_DIR)/qmk_settings.c
