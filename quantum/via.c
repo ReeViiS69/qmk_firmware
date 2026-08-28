@@ -31,6 +31,9 @@
 #ifdef VIAL_ENABLE
 #    include "vial.h"
 #endif
+#ifdef VIALRGB_ENABLE
+#    include "vialrgb.h"
+#endif
 
 #include "raw_hid.h"
 #include "dynamic_keymap.h"
@@ -458,9 +461,53 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             dynamic_keymap_reset();
             break;
         }
-        case id_custom_set_value:
-        case id_custom_get_value:
+        case id_custom_set_value: {
+#ifdef VIALRGB_ENABLE
+            /*
+             * VialRGB uses the same outer wire ID (0x07) as modern
+             * id_custom_set_value. Its second byte is a VialRGB command
+             * in the 0x40 range, well outside QMK's channel IDs.
+             */
+            if (command_data[0] == vialrgb_set_mode ||
+                command_data[0] == vialrgb_direct_fastset) {
+                vialrgb_set_value(data, length);
+                break;
+            }
+#endif
+            via_custom_value_command(data, length);
+            break;
+        }
+
+        case id_custom_get_value: {
+#ifdef VIALRGB_ENABLE
+            /*
+             * Same wire-ID compatibility for GET. Keep all normal QMK
+             * channels on the modern via_custom_value_command() path.
+             */
+            if (command_data[0] >= vialrgb_get_info &&
+                command_data[0] <= vialrgb_get_led_info) {
+                vialrgb_get_value(data, length);
+                break;
+            }
+#endif
+            via_custom_value_command(data, length);
+            break;
+        }
+
         case id_custom_save: {
+#ifdef VIALRGB_ENABLE
+            /*
+             * Vial's old lighting-save command and modern custom-save both
+             * use outer ID 0x09 and lighting-save has no VialRGB subcommand.
+             *
+             * Preserve modern QMK core channels 1..5. Channel 0 (or a value
+             * outside QMK's core-channel range) is treated as VialRGB save.
+             */
+            if (command_data[0] == id_custom_channel) {
+                vialrgb_save(data, length);
+                break;
+            }
+#endif
             via_custom_value_command(data, length);
             break;
         }

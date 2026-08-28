@@ -37,7 +37,7 @@ static uint8_t sharkoon_recorded_key[MATRIX_ROWS][MATRIX_COLS];
 static bool    sharkoon_suppress_release[MATRIX_ROWS][MATRIX_COLS];
 static uint8_t sharkoon_via_macro_buffer[SHARKOON_VIA_MACRO_BUFFER_MAX];
 
-#ifdef RGB_MATRIX_ENABLE
+#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
 static bool          sharkoon_macro_select_led_active    = false;
 static bool          sharkoon_macro_select_blink_on      = false;
 static uint16_t      sharkoon_macro_select_led_timer     = 0;
@@ -68,7 +68,7 @@ static void sharkoon_start_recording(uint8_t slot, uint8_t row, uint8_t col) {
     sharkoon_recording_length   = 0;
     sharkoon_pressed_count      = 0;
 
-#ifdef RGB_MATRIX_ENABLE
+#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
     // Cache the LED that actually started the recording. This follows REC_M0/
     // REC_M1 when they are moved in VIA and avoids row/column lookup per frame.
     sharkoon_recording_led = g_led_config.matrix_co[row][col];
@@ -212,7 +212,7 @@ static void sharkoon_finish_recording(bool force_release) {
 
     sharkoon_recording          = false;
     sharkoon_accept_new_presses = false;
-#ifdef RGB_MATRIX_ENABLE
+#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
     // Effects ignore flags==0 LEDs, so explicitly clear an ignored recording
     // LED before dropping the cached index. Normal effect LEDs redraw themselves.
     if (sharkoon_recording_led != NO_LED && g_led_config.flags[sharkoon_recording_led] == 0) {
@@ -239,7 +239,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     const uint8_t row = record->event.key.row;
     const uint8_t col = record->event.key.col;
 
-#ifdef RGB_MATRIX_ENABLE
+#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
     // Follow KC_CAPS when it is moved in VIA. Cache the LED from the actual
     // physical key event so the RGB indicator never has to scan the matrix.
     if (record->event.pressed && keycode == KC_CAPS) {
@@ -341,7 +341,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
-#ifdef RGB_MATRIX_ENABLE
+#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
 static void sharkoon_clear_ignored_select_leds(void) {
     for (uint8_t i = 0; i < sharkoon_macro_select_led_count; ++i) {
         const uint8_t led = sharkoon_macro_select_leds[i];
