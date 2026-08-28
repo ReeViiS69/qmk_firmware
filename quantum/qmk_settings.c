@@ -26,6 +26,21 @@ qmk_settings_t QS;
 #define DECLARE_STATIC_SETTING(id, field) DECLARE_STATIC_SETTING_NOTIFY(id, field, NULL)
 #define DECLARE_STATIC_BITSETTING(id, field, bit_) { .qsid=id, .ptr=&QS.field, .sz=sizeof(QS.field), .bit=bit_, .get=eeprom_settings_getbit, .set=eeprom_settings_setbit }
 
+static void auto_shift_apply(void) {
+    /*
+     * Keep modern QMK's native Auto Shift runtime state synchronized
+     * with Vial's persistent QMK Settings master switch.
+     *
+     * process_auto_shift() still checks QS_auto_shift_enable directly,
+     * but other modern QMK modules may query get_autoshift_state().
+     */
+    if (QS_auto_shift_enable) {
+        autoshift_enable();
+    } else {
+        autoshift_disable();
+    }
+}
+
 static void auto_shift_timeout_apply(void) {
     set_autoshift_timeout(QS.auto_shift_timeout);
 }
@@ -46,7 +61,7 @@ static void mousekey_apply(void) {
 static const qmk_settings_proto_t protos[] PROGMEM = {
    DECLARE_STATIC_SETTING(1, grave_esc_override),
    DECLARE_STATIC_SETTING(2, combo_term),
-   DECLARE_STATIC_SETTING(3, auto_shift),
+   DECLARE_STATIC_SETTING_NOTIFY(3, auto_shift, auto_shift_apply),
    DECLARE_STATIC_SETTING_NOTIFY(4, auto_shift_timeout, auto_shift_timeout_apply),
    DECLARE_STATIC_SETTING(5, osk_tap_toggle),
    DECLARE_STATIC_SETTING(6, osk_timeout),
