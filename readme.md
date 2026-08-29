@@ -75,7 +75,7 @@ The forward-port has been extensively tested and verified on physical hardware:
 - [x] **VialRGB & Direct Mode:** 45 modes, per-LED Direct streaming, and interactive test point rendering.
 - [x] **LED Protection:** Full-frame `LED_FLAG_NONE` masking verified under heavy effects like Digital Rain.
 - [x] **Regression Safety:** Verified that `keymap: via` builds remain byte-identical after Vial-only changes.
-
+- [x] Vial Secure building and testing
 ---
 
 ## ⚠️ Usage & Security Notes
@@ -84,8 +84,11 @@ The forward-port has been extensively tested and verified on physical hardware:
 > **Raw-HID Client Concurrency:** Do not run high-frequency VialRGB Direct streaming clients and the Vial GUI (Matrix Tester traffic) simultaneously. Running both concurrently can cause contention while accessing the same Raw-HID interface. Each client operates smoothly when run independently.
 
 > [!WARNING]
-> **Bring-up Security State:** This firmware is currently set to `VIAL_INSECURE = yes` for bring-up and physical verification. Before final release, configure your unlock matrix positions in `config.h` and remove `VIAL_INSECURE = yes`.
-
+> **Bring-up Security State:** This firmware was set to `VIAL_INSECURE = yes` for bring-up and physical verification. 
+> Now for final release we have:
+> 1. Configured physical Vial unlock matrix positions in `config.h`.
+> 2. Removed `VIAL_INSECURE = yes`.
+> 3. Build secure firmware and verified locked behavior vs. physical unlock sequence.
 ---
 
 ## 📖 Architecture & Technical Breakdown
