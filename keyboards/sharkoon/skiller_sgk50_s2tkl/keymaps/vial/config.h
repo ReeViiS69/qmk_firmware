@@ -21,3 +21,6 @@
  * The macro EEPROM buffer itself is NOT reduced by this setting.
  */
 #define DYNAMIC_KEYMAP_MACRO_COUNT 8
+//for secure vial unlock
+#define VIAL_UNLOCK_COMBO_ROWS {0, 4}
+#define VIAL_UNLOCK_COMBO_COLS {13, 18}

@@ -27,6 +27,7 @@
 #endif
 
 #include "via.h"
+#include "bootloader.h"
 
 #ifdef VIAL_ENABLE
 #    include "vial.h"
@@ -306,6 +307,22 @@ __attribute__((weak)) bool via_command_kb(uint8_t *data, uint8_t length) {
     return false;
 }
 
+#ifdef VIAL_ENABLE
+/*
+ * Filter security-sensitive keycodes received through VIA.
+ *
+ * Keep this at the untrusted host boundary instead of making the generic
+ * dynamic-keymap storage functions security-aware.
+ */
+__attribute__((unused)) static uint16_t vial_keycode_firewall(uint16_t in) {
+    if (in == QK_BOOT && !vial_unlocked) {
+        return 0;
+    }
+
+    return in;
+}
+#endif
+
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     uint8_t *command_id   = &(data[0]);
     uint8_t *command_data = &(data[1]);
@@ -454,7 +471,11 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             break;
         }
         case id_dynamic_keymap_set_keycode: {
+#ifdef VIAL_ENABLE
+            dynamic_keymap_set_keycode(command_data[0], command_data[1], command_data[2], vial_keycode_firewall((command_data[3] << 8) | command_data[4]));
+#else
             dynamic_keymap_set_keycode(command_data[0], command_data[1], command_data[2], (command_data[3] << 8) | command_data[4]);
+#endif
             break;
         }
         case id_dynamic_keymap_reset: {
@@ -602,7 +623,11 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             break;
         }
         case id_dynamic_keymap_set_encoder: {
+#ifdef VIAL_ENABLE
+            dynamic_keymap_set_encoder(command_data[0], command_data[1], command_data[2] != 0, vial_keycode_firewall((command_data[3] << 8) | command_data[4]));
+#else
             dynamic_keymap_set_encoder(command_data[0], command_data[1], command_data[2] != 0, (command_data[3] << 8) | command_data[4]);
+#endif
             break;
         }
 #endif
