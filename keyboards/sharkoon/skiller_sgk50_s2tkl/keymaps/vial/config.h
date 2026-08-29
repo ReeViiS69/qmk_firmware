@@ -24,3 +24,14 @@
 //for secure vial unlock
 #define VIAL_UNLOCK_COMBO_ROWS {0, 4}
 #define VIAL_UNLOCK_COMBO_COLS {13, 18}
+/*
+ * Sharkoon SGK50 S2 TKL:
+ *
+ * Keep QMK/Vial's official RGB_MATRIX_SOLID_REACTIVE mode ID, but rename
+ * QMK's stock renderer while rgb_matrix.c is compiled. rgb_matrix_user.inc
+ * then supplies our keyboard-specific SOLID_REACTIVE() implementation.
+ *
+ * This keeps the official VialRGB "Solid Reactive" slot fully compatible
+ * with Vial Desktop and Vial Web without modifying Vial/QMK core files.
+ */
+#define SOLID_REACTIVE SHARKOON_ORIGINAL_SOLID_REACTIVE
