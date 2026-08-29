@@ -8,4 +8,4 @@ VIALRGB_ENABLE = yes
 # Register VialRGB Direct through modern QMK custom-user RGB Matrix effects.
 RGB_MATRIX_CUSTOM_USER = yes
 
-# LTO_ENABLE = yes
+LTO_ENABLE = yes
