@@ -37,7 +37,7 @@ static uint8_t sharkoon_recorded_key[MATRIX_ROWS][MATRIX_COLS];
 static bool    sharkoon_suppress_release[MATRIX_ROWS][MATRIX_COLS];
 static uint8_t sharkoon_via_macro_buffer[SHARKOON_VIA_MACRO_BUFFER_MAX];
 
-#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
+#ifdef RGB_MATRIX_ENABLE
 static bool          sharkoon_macro_select_led_active    = false;
 static bool          sharkoon_macro_select_blink_on      = false;
 static uint16_t      sharkoon_macro_select_led_timer     = 0;
@@ -68,10 +68,12 @@ static void sharkoon_start_recording(uint8_t slot, uint8_t row, uint8_t col) {
     sharkoon_recording_length   = 0;
     sharkoon_pressed_count      = 0;
 
-#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
+#ifdef RGB_MATRIX_ENABLE
     // Cache the LED that actually started the recording. This follows REC_M0/
-    // REC_M1 when they are moved in VIA and avoids row/column lookup per frame.
-    sharkoon_recording_led = g_led_config.matrix_co[row][col];
+    // REC_M1 when they are moved in Vial and avoids row/column lookup per frame.
+    sharkoon_recording_led          = g_led_config.matrix_co[row][col];
+    sharkoon_macro_select_blink_on  = true;
+    sharkoon_macro_select_led_timer = timer_read();
 #endif
 
     memset(sharkoon_recorded_key, 0, sizeof(sharkoon_recorded_key));
@@ -212,7 +214,7 @@ static void sharkoon_finish_recording(bool force_release) {
 
     sharkoon_recording          = false;
     sharkoon_accept_new_presses = false;
-#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
+#ifdef RGB_MATRIX_ENABLE
     // Effects ignore flags==0 LEDs, so explicitly clear an ignored recording
     // LED before dropping the cached index. Normal effect LEDs redraw themselves.
     if (sharkoon_recording_led != NO_LED && g_led_config.flags[sharkoon_recording_led] == 0) {
@@ -239,8 +241,8 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     const uint8_t row = record->event.key.row;
     const uint8_t col = record->event.key.col;
 
-#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
-    // Follow KC_CAPS when it is moved in VIA. Cache the LED from the actual
+#ifdef RGB_MATRIX_ENABLE
+    // Follow KC_CAPS when it is moved in Vial. Cache the LED from the actual
     // physical key event so the RGB indicator never has to scan the matrix.
     if (record->event.pressed && keycode == KC_CAPS) {
         const uint8_t new_caps_led = g_led_config.matrix_co[row][col];
@@ -341,7 +343,7 @@ bool process_record_user(uint16_t keycode, keyrecord_t *record) {
     return true;
 }
 
-#if defined(RGB_MATRIX_ENABLE) && !defined(VIALRGB_ENABLE)
+#ifdef RGB_MATRIX_ENABLE
 static void sharkoon_clear_ignored_select_leds(void) {
     for (uint8_t i = 0; i < sharkoon_macro_select_led_count; ++i) {
         const uint8_t led = sharkoon_macro_select_leds[i];
@@ -413,6 +415,19 @@ bool led_update_user(led_t led_state) {
 }
 
 bool rgb_matrix_indicators_user(void) {
+#ifdef VIALRGB_ENABLE
+    /*
+     * VialRGB framebuffer effects such as DIGITAL_RAIN can paint LEDs that are
+     * intentionally excluded from normal effects. Enforce LED_FLAG_NONE first;
+     * status overlays below may then temporarily light only the LEDs they own.
+     */
+    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; ++i) {
+        if (g_led_config.flags[i] == LED_FLAG_NONE) {
+            rgb_matrix_set_color(i, 0, 0, 0);
+        }
+    }
+#endif
+
     // While selection is active, only re-scan when the effective layer stack
     // actually changed. The expensive matrix walk remains outside normal idle.
     if (sharkoon_macro_select_led_active) {
@@ -436,20 +451,30 @@ bool rgb_matrix_indicators_user(void) {
         return true;
     }
 
-    const rgb_t status_rgb = hsv_to_rgb(rgb_matrix_config.hsv);
-
-    if (sharkoon_recording) {
-        if (sharkoon_recording_led != NO_LED) {
-            rgb_matrix_set_color(sharkoon_recording_led, status_rgb.r, status_rgb.g, status_rgb.b);
-        }
-        return true;
-    }
-
     if (timer_elapsed(sharkoon_macro_select_led_timer) >= SHARKOON_MACRO_LED_BLINK_MS) {
         sharkoon_macro_select_led_timer = timer_read();
         sharkoon_macro_select_blink_on  = !sharkoon_macro_select_blink_on;
     }
 
+    const rgb_t status_rgb = hsv_to_rgb(rgb_matrix_config.hsv);
+
+    // During recording only the REC_M0/REC_M1 key that started the recording
+    // blinks. Because the LED was resolved from the physical key event, the
+    // indicator follows the recorder key when it is moved in Vial.
+    if (sharkoon_recording) {
+        if (sharkoon_recording_led != NO_LED) {
+            if (sharkoon_macro_select_blink_on) {
+                rgb_matrix_set_color(sharkoon_recording_led, status_rgb.r, status_rgb.g, status_rgb.b);
+            } else {
+                rgb_matrix_set_color(sharkoon_recording_led, 0, 0, 0);
+            }
+        }
+        return true;
+    }
+
+    // On the macro-selection layer both recorder keys blink. Their LEDs are
+    // discovered from the active dynamic keymap, so moving REC_M0/REC_M1 in
+    // Vial also moves the indicator without hard-coded LED indices.
     for (uint8_t i = 0; i < sharkoon_macro_select_led_count; ++i) {
         const uint8_t led = sharkoon_macro_select_leds[i];
         if (sharkoon_macro_select_blink_on) {
@@ -463,43 +488,24 @@ bool rgb_matrix_indicators_user(void) {
 }
 #endif
 
-
-#if defined(RGB_MATRIX_ENABLE) && defined(VIALRGB_ENABLE)
-/*
- * Some framebuffer effects such as DIGITAL_RAIN render the complete matrix
- * in one pass instead of respecting the normal RGB Matrix LED processing
- * limits. Apply the Vial-only LED_FLAG_NONE invariant once after the complete
- * animation frame has finished rendering and immediately before it is flushed.
- */
-bool rgb_matrix_indicators_user(void) {
-    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; ++i) {
-        if (g_led_config.flags[i] == LED_FLAG_NONE) {
-            rgb_matrix_set_color(i, 0, 0, 0);
-        }
-    }
-
-    return true;
-}
-#endif
-
 const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
     [0] = LAYOUT_all(
-        KC_ESC,  KC_F1,   KC_F2,   KC_F3,   KC_F4,   KC_F5,   KC_F6,   KC_F7,   KC_F8,   KC_F9,   KC_F10,  KC_F11,  KC_F12,  KC_NO,   KC_NO,   KC_NO,    KC_NO,    KC_PAUS,  KC_NO,
+        KC_ESC,  KC_F1,   KC_F2,   KC_F3,   KC_F4,   KC_F5,   KC_F6,   KC_F7,   KC_F8,   KC_F9,   KC_F10,  KC_F11,  KC_F12,  KC_NO,   KC_NO,   KC_NO,    KC_NO,    KC_PAUS,  RM_TOGG,
         KC_GRV,  KC_1,    KC_2,    KC_3,    KC_4,    KC_5,    KC_6,    KC_7,    KC_8,    KC_9,    KC_0,    KC_MINS, KC_EQL,  KC_BSPC,          KC_DEL,   KC_HOME,  KC_PGUP,  KC_NO,
-        KC_TAB,  KC_Q,    KC_W,    KC_E,    KC_R,    KC_T,    KC_Y,    KC_U,    KC_I,    KC_O,    KC_P,    KC_LBRC, KC_RBRC, KC_BSLS,          KC_INS,   KC_END,   KC_PGDN,  KC_NO,
-        KC_CAPS, KC_A,    KC_S,    KC_D,    KC_F,    KC_G,    KC_H,    KC_J,    KC_K,    KC_L,    KC_SCLN, KC_QUOT,          KC_ENT,           KC_NO,    KC_NO,    KC_NO,
-        KC_LSFT, KC_NUBS, KC_Z,    KC_X,    KC_C,    KC_V,    KC_B,    KC_N,    KC_M,    KC_COMM, KC_DOT,  KC_SLSH,          KC_RSFT, KC_NO,   KC_NO,    KC_UP,    KC_NO,    KC_NO,
-        KC_LCTL, KC_LGUI, KC_LALT,                            KC_SPC,                             KC_RALT, MO(1),   KC_RCTL, KC_NO,   KC_NO,   KC_LEFT, KC_DOWN,  KC_RGHT
+        KC_TAB,  KC_Q,    KC_W,    KC_E,    KC_R,    KC_T,    KC_Y,    KC_U,    KC_I,    KC_O,    KC_P,    KC_LBRC, KC_RBRC, KC_BSLS,          KC_INS,   KC_END,   KC_PGDN,  MS_BTN3,
+        KC_CAPS, KC_A,    KC_S,    KC_D,    KC_F,    KC_G,    KC_H,    KC_J,    KC_K,    KC_L,    KC_SCLN, KC_QUOT,          KC_ENT,           MS_BTN1, MS_UP,    MS_BTN2,
+        KC_LSFT, KC_NUBS, KC_Z,    KC_X,    KC_C,    KC_V,    KC_B,    KC_N,    KC_M,    KC_COMM, KC_DOT,  KC_SLSH,          KC_RSFT, KC_UP,   MS_LEFT,  MS_DOWN,  MS_RGHT,  KC_MPLY,
+        KC_LCTL, KC_LGUI, KC_LALT,                            KC_SPC,                             KC_RALT, MO(1),   KC_RCTL, KC_LEFT, KC_DOWN,  KC_RGHT, KC_NO,    KC_NO
     ),
 
     [1] = LAYOUT_all(
-        EE_CLR,  KC_MPLY, KC_MPRV, KC_MNXT, KC_MUTE,  KC_VOLD, KC_VOLU, RM_SPDD,  RM_SPDU,  QK_MACRO_0, QK_MACRO_1, KC_PSCR, KC_SCRL, KC_NO,   KC_NO,   KC_NO,    KC_NO,    _______,  KC_NO,
-        _______, _______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______, _______,    _______,          _______,  _______,  _______,  KC_NO,
-        OSL(2),  _______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______, _______,    _______,          _______,  _______,  _______,  KC_NO,
-        REC_STOP,_______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______,             _______,          KC_NO,     KC_NO,     KC_NO,
-        _______, _______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______,             _______, KC_NO,    KC_NO,     RM_VALU,   KC_NO,    KC_NO,
-        _______, GU_TOGG, _______,                             _______,                                _______,   _______,   _______, KC_NO,    KC_NO,    RM_HUEU,  RM_VALD,  RM_NEXT
+        _______, KC_MPLY, KC_MPRV, KC_MNXT, KC_MUTE,  KC_VOLD, KC_VOLU, RM_SPDD,  RM_SPDU,  QK_MACRO_0, QK_MACRO_1, KC_PSCR, KC_SCRL, _______, EE_CLR,   _______,  _______,  _______,  _______,
+        _______, _______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______, _______,    _______,          _______,  _______,  _______,  _______,
+        OSL(2),  _______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______, _______,    _______,          _______,  _______,  _______,  _______,
+        REC_STOP,_______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______,             _______,          QK_MACRO_2, QK_MACRO_3, QK_MACRO_4,
+        _______, _______, _______, _______, _______,  _______, _______, _______,  _______,  _______,   _______,   _______,             _______, RM_VALU, QK_MACRO_5, QK_MACRO_6, QK_MACRO_7, _______,
+        _______, GU_TOGG, _______,                             _______,                                _______,   _______,   _______, RM_HUEU, RM_VALD,  RM_NEXT,   _______,   _______
     ),
 
     [2] = LAYOUT_all(
