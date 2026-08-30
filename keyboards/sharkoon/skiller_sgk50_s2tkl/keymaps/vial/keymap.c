@@ -47,6 +47,15 @@ static uint8_t       sharkoon_macro_select_leds[MATRIX_ROWS * MATRIX_COLS];
 static uint8_t       sharkoon_recording_led              = NO_LED;
 static uint8_t       sharkoon_caps_lock_led              = NO_LED;
 static bool          sharkoon_caps_lock_active           = false;
+
+#ifdef VIALRGB_ENABLE
+/*
+ * Generated at build time from rgb_matrix.layout in keyboard.json.
+ * This keeps keyboard.json as the single source of truth for LED_FLAG_NONE
+ * while preserving a direct, scan-free list at runtime.
+ */
+#    include "sharkoon_disabled_leds.inc"
+#endif
 #endif
 
 static bool sharkoon_append_event(uint8_t event_type, uint8_t keycode) {
@@ -418,13 +427,14 @@ bool rgb_matrix_indicators_user(void) {
 #ifdef VIALRGB_ENABLE
     /*
      * VialRGB framebuffer effects such as DIGITAL_RAIN can paint LEDs that are
-     * intentionally excluded from normal effects. Enforce LED_FLAG_NONE first;
-     * status overlays below may then temporarily light only the LEDs they own.
+     * intentionally excluded from normal effects. The disabled positions are
+     * static for this keyboard, so clear only those known LEDs instead of
+     * scanning all RGB_MATRIX_LED_COUNT entries every frame. Status overlays
+     * below may then temporarily light only the LEDs they own.
      */
-    for (uint8_t i = 0; i < RGB_MATRIX_LED_COUNT; ++i) {
-        if (g_led_config.flags[i] == LED_FLAG_NONE) {
-            rgb_matrix_set_color(i, 0, 0, 0);
-        }
+    for (uint8_t i = 0; i < SHARKOON_VIALRGB_DISABLED_LED_COUNT; ++i) {
+        const uint8_t led = sharkoon_vialrgb_disabled_leds[i];
+        rgb_matrix_set_color(led, 0, 0, 0);
     }
 #endif
 
