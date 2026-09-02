@@ -148,6 +148,12 @@ void eeconfig_init_via(void) {
     dynamic_keymap_reset();
     // This resets the macros in EEPROM to nothing.
     dynamic_keymap_macro_reset();
+#ifdef VIAL_ENABLE
+    // dynamic_keymap_reset() also resets Vial's persistent dynamic entries.
+    // Refresh the runtime caches so a BUILD_ID invalidation or manual EEPROM
+    // reset takes effect immediately instead of only after the next reboot.
+    vial_init();
+#endif
     // Save the magic number last, in case saving was interrupted
     via_eeprom_set_valid(true);
 }
