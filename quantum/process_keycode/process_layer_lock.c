@@ -20,14 +20,61 @@
 // The current lock state. The kth bit is on if layer k is locked.
 extern layer_state_t locked_layers;
 
+static layer_state_t unlock_on_release_layers;
+#ifndef NO_ACTION_TAPPING
+static layer_state_t tt_expected_on_layers;
+#endif
+
 // Handles an event on an `MO` or `TT` layer switch key.
-static inline bool handle_mo_or_tt(uint8_t layer, keyrecord_t* record) {
-    if (is_layer_locked(layer)) {
-        if (record->event.pressed) { // On press, unlock the layer.
-            layer_lock_invert(layer);
+static inline bool handle_mo_or_tt(uint8_t layer, keyrecord_t* record, bool is_tt) {
+#ifdef NO_ACTION_TAPPING
+#    ifdef NO_ACTION_TAPPING_TAP_TOGGLE_MO
+    is_tt = false;
+#    else
+    if (is_tt) {
+        if (is_layer_locked(layer)) {
+            if (record->event.pressed) {
+                layer_lock_invert(layer);
+            }
+            return false;
         }
-        return false; // Skip default handling.
+        return true;
     }
+#    endif
+#endif
+
+    const layer_state_t bit = (layer_state_t)1 << layer;
+
+    if (record->event.pressed) {
+        if (is_layer_locked(layer)) {
+            unlock_on_release_layers |= bit;
+            return !is_tt;
+        }
+        unlock_on_release_layers &= ~bit;
+#ifndef NO_ACTION_TAPPING
+        if (is_tt && record->tap.count == 0) {
+            tt_expected_on_layers = layer_state_is(layer) ? tt_expected_on_layers & ~bit : tt_expected_on_layers | bit;
+        }
+#endif
+        return true;
+    }
+
+    if (unlock_on_release_layers & bit) {
+        unlock_on_release_layers &= ~bit;
+        if (is_layer_locked(layer)) {
+            layer_lock_off(layer);
+        }
+        return !is_tt;
+    }
+
+    if (is_layer_locked(layer)) {
+        return false;
+    }
+#ifndef NO_ACTION_TAPPING
+    if (is_tt && record->tap.count == 0 && layer_state_is(layer) != ((tt_expected_on_layers & bit) != 0)) {
+        return false;
+    }
+#endif
     return true;
 }
 
@@ -50,10 +97,10 @@ bool process_layer_lock(uint16_t keycode, keyrecord_t* record) {
 
     switch (keycode) {
         case QK_MOMENTARY ... QK_MOMENTARY_MAX: // `MO(layer)` keys.
-            return handle_mo_or_tt(QK_MOMENTARY_GET_LAYER(keycode), record);
+            return handle_mo_or_tt(QK_MOMENTARY_GET_LAYER(keycode), record, false);
 
         case QK_LAYER_TAP_TOGGLE ... QK_LAYER_TAP_TOGGLE_MAX: // `TT(layer)`.
-            return handle_mo_or_tt(QK_LAYER_TAP_TOGGLE_GET_LAYER(keycode), record);
+            return handle_mo_or_tt(QK_LAYER_TAP_TOGGLE_GET_LAYER(keycode), record, true);
 
         case QK_LAYER_MOD ... QK_LAYER_MOD_MAX: { // `LM(layer, mod)`.
             uint8_t layer = QK_LAYER_MOD_GET_LAYER(keycode);
