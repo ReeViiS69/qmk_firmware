@@ -238,6 +238,10 @@ bool process_caps_word(uint16_t keycode, keyrecord_t* record) {
 #else
         clear_weak_mods();
 #endif // AUTO_SHIFT_ENABLE
+#ifdef CAPS_WORD_CONTINUE_KEY
+    if (keycode == CAPS_WORD_CONTINUE_KEY)
+        return true;
+#endif
         if (caps_word_press_user(keycode)) {
 #ifdef CAPS_WORD_INVERT_ON_SHIFT
             if (held_mods) {
@@ -260,12 +264,13 @@ __attribute__((weak)) bool caps_word_press_user(uint16_t keycode) {
     switch (keycode) {
         // Keycodes that continue Caps Word, with shift applied.
         case KC_A ... KC_Z:
-        case KC_MINS:
+        case KC_SLASH:
             add_weak_mods(MOD_BIT(KC_LSFT)); // Apply shift to next key.
             return true;
 
         // Keycodes that continue Caps Word, without shifting.
         case KC_1 ... KC_0:
+		case KC_MINS:
         case KC_BSPC:
         case KC_DEL:
         case KC_UNDS:
