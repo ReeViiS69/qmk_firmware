@@ -371,9 +371,6 @@ void keyboard_setup(void) {
 #ifdef EEPROM_DRIVER
     eeprom_driver_init();
 #endif
-#ifdef VIAL_ENABLE
-    vial_init();
-#endif
 #ifdef QMK_SETTINGS
     qmk_settings_init();
 #endif
@@ -450,6 +447,10 @@ void quantum_init(void) {
     if (!eeconfig_is_enabled()) {
         eeconfig_init();
     }
+
+#ifdef VIAL_ENABLE
+    vial_init();
+#endif
 
     /* init globals */
     eeconfig_read_debug(&debug_config);
