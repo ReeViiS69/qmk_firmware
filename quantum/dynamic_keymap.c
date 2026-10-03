@@ -20,7 +20,17 @@
 #include "action.h"
 #include "send_string.h"
 #include "keycodes.h"
+#include "wait.h"
+#include <string.h>
 #include "nvm_dynamic_keymap.h"
+
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
+
+#ifdef VIAL_TAP_DANCE_ENABLE
+#    include "action_tapping.h"
+#endif
 
 #ifdef ENCODER_ENABLE
 #    include "encoder.h"
@@ -54,7 +64,70 @@ void dynamic_keymap_set_encoder(uint8_t layer, uint8_t encoder_id, bool clockwis
 }
 #endif // ENCODER_MAP_ENABLE
 
+#ifdef VIAL_ENABLE
+#    include "vial.h"
+#endif
+
+#ifdef QMK_SETTINGS
+uint8_t dynamic_keymap_get_qmk_settings(uint16_t offset) {
+    return nvm_dynamic_keymap_get_qmk_settings(offset);
+}
+
+void dynamic_keymap_set_qmk_settings(uint16_t offset, uint8_t value) {
+    nvm_dynamic_keymap_set_qmk_settings(offset, value);
+}
+#endif
+
+#ifdef VIAL_TAP_DANCE_ENABLE
+int dynamic_keymap_get_tap_dance(uint8_t index, vial_tap_dance_entry_t *entry) {
+    return nvm_dynamic_keymap_get_tap_dance(index, entry);
+}
+
+int dynamic_keymap_set_tap_dance(uint8_t index, const vial_tap_dance_entry_t *entry) {
+    return nvm_dynamic_keymap_set_tap_dance(index, entry);
+}
+#endif
+
+#ifdef VIAL_COMBO_ENABLE
+int dynamic_keymap_get_combo(uint8_t index, vial_combo_entry_t *entry) {
+    return nvm_dynamic_keymap_get_combo(index, entry);
+}
+
+int dynamic_keymap_set_combo(uint8_t index, const vial_combo_entry_t *entry) {
+    return nvm_dynamic_keymap_set_combo(index, entry);
+}
+#endif
+
+#ifdef VIAL_KEY_OVERRIDE_ENABLE
+int dynamic_keymap_get_key_override(uint8_t index, vial_key_override_entry_t *entry) {
+    return nvm_dynamic_keymap_get_key_override(index, entry);
+}
+
+int dynamic_keymap_set_key_override(uint8_t index, const vial_key_override_entry_t *entry) {
+    return nvm_dynamic_keymap_set_key_override(index, entry);
+}
+#endif
+
+#ifdef VIAL_ALT_REPEAT_KEY_ENABLE
+int dynamic_keymap_get_alt_repeat_key(uint8_t index, vial_alt_repeat_key_entry_t *entry) {
+    return nvm_dynamic_keymap_get_alt_repeat_key(index, entry);
+}
+
+int dynamic_keymap_set_alt_repeat_key(uint8_t index, const vial_alt_repeat_key_entry_t *entry) {
+    return nvm_dynamic_keymap_set_alt_repeat_key(index, entry);
+}
+#endif
+
 void dynamic_keymap_reset(void) {
+#ifdef VIAL_ENABLE
+    /*
+     * Temporarily unlock Vial while restoring the compiled-in keymap.
+     * This allows trusted firmware defaults such as QK_BOOT to be restored.
+     */
+    int vial_unlocked_prev = vial_unlocked;
+    vial_unlocked = 1;
+#endif
+
     // Erase the keymaps, if necessary.
     nvm_dynamic_keymap_erase();
 
@@ -72,6 +145,60 @@ void dynamic_keymap_reset(void) {
         }
 #endif // ENCODER_MAP_ENABLE
     }
+
+#ifdef QMK_SETTINGS
+    qmk_settings_reset();
+#endif
+
+#ifdef VIAL_TAP_DANCE_ENABLE
+    {
+        vial_tap_dance_entry_t td = { KC_NO, KC_NO, KC_NO, KC_NO, TAPPING_TERM };
+
+        for (size_t i = 0; i < VIAL_TAP_DANCE_ENTRIES; ++i) {
+            dynamic_keymap_set_tap_dance(i, &td);
+        }
+    }
+#endif
+
+#ifdef VIAL_COMBO_ENABLE
+    {
+        vial_combo_entry_t combo = { 0 };
+
+        for (size_t i = 0; i < VIAL_COMBO_ENTRIES; ++i) {
+            dynamic_keymap_set_combo(i, &combo);
+        }
+    }
+#endif
+
+#ifdef VIAL_KEY_OVERRIDE_ENABLE
+    {
+        vial_key_override_entry_t ko = { 0 };
+
+        ko.layers  = ~0;
+        ko.options = vial_ko_option_activation_negative_mod_up |
+                     vial_ko_option_activation_required_mod_down |
+                     vial_ko_option_activation_trigger_down;
+
+        for (size_t i = 0; i < VIAL_KEY_OVERRIDE_ENTRIES; ++i) {
+            dynamic_keymap_set_key_override(i, &ko);
+        }
+    }
+#endif
+
+#ifdef VIAL_ALT_REPEAT_KEY_ENABLE
+    {
+        vial_alt_repeat_key_entry_t arep = { 0 };
+
+        for (size_t i = 0; i < VIAL_ALT_REPEAT_KEY_ENTRIES; ++i) {
+            dynamic_keymap_set_alt_repeat_key(i, &arep);
+        }
+    }
+#endif
+
+#ifdef VIAL_ENABLE
+    /* Restore the previous Vial lock state. */
+    vial_unlocked = vial_unlocked_prev;
+#endif
 }
 
 void dynamic_keymap_get_buffer(uint16_t offset, uint16_t size, uint8_t *data) {
@@ -120,6 +247,26 @@ static uint8_t dynamic_keymap_read_byte(uint32_t offset) {
     return d;
 }
 
+#ifdef VIAL_ENABLE
+
+static uint16_t decode_keycode(uint16_t keycode) {
+    /*
+     * Vial encodes keycodes with a zero low-byte specially because
+     * zero terminates a dynamic macro.
+     *
+     * 0xFF01 -> 0x0100
+     * 0xFF02 -> 0x0200
+     * ...
+     */
+    if (keycode > 0xFF00) {
+        return (keycode & 0xFF) << 8;
+    }
+
+    return keycode;
+}
+
+#else // VIAL_ENABLE
+
 typedef struct send_string_nvm_state_t {
     uint32_t offset;
 } send_string_nvm_state_t;
@@ -131,6 +278,8 @@ char send_string_get_next_nvm(void *arg) {
     return ret;
 }
 
+#endif // VIAL_ENABLE
+
 void dynamic_keymap_macro_reset(void) {
     // Erase the macros, if necessary.
     nvm_dynamic_keymap_macro_erase();
@@ -138,6 +287,150 @@ void dynamic_keymap_macro_reset(void) {
 }
 
 void dynamic_keymap_macro_send(uint8_t id) {
+#ifdef VIAL_ENABLE
+    if (id >= DYNAMIC_KEYMAP_MACRO_COUNT) {
+        return;
+    }
+
+    /*
+     * The final byte is the valid flag.
+     * A non-zero value means a macro-buffer write may still be
+     * in progress or may have been interrupted.
+     */
+    if (dynamic_keymap_read_byte(nvm_dynamic_keymap_macro_size() - 1) != 0) {
+        return;
+    }
+
+    /*
+     * Skip N null terminators.
+     * offset will then point to the requested macro.
+     */
+    uint32_t offset = 0;
+    uint32_t end    = nvm_dynamic_keymap_macro_size();
+
+    while (id > 0) {
+        if (offset == end) {
+            return;
+        }
+
+        if (dynamic_keymap_read_byte(offset) == 0) {
+            --id;
+        }
+
+        ++offset;
+    }
+
+    /*
+     * Four bytes are enough for:
+     *
+     *   SS_QMK_PREFIX
+     *   action
+     *   keycode byte 1
+     *   keycode byte 2
+     */
+    char data[4] = {0, 0, 0, 0};
+
+    /*
+     * The valid-flag check above guarantees there is a terminating
+     * zero before the end of the usable macro buffer.
+     */
+    while (1) {
+        memset(data, 0, sizeof(data));
+
+        data[0] = dynamic_keymap_read_byte(offset++);
+
+        if (data[0] == 0) {
+            break;
+        }
+
+        if (data[0] == SS_QMK_PREFIX) {
+            data[1] = dynamic_keymap_read_byte(offset++);
+
+            if (data[1] == 0) {
+                break;
+            }
+
+            /*
+             * Standard QMK/VIA 8-bit macro actions.
+             * This is also the format used by the existing
+             * keyboard-side macro recorder.
+             */
+            if (data[1] == SS_TAP_CODE ||
+                data[1] == SS_DOWN_CODE ||
+                data[1] == SS_UP_CODE) {
+
+                data[2] = dynamic_keymap_read_byte(offset++);
+
+                if (data[2] != 0) {
+                    send_string(data);
+                }
+
+            /*
+             * Vial extended actions with full 16-bit QMK keycodes.
+             */
+            } else if (data[1] == VIAL_MACRO_EXT_TAP ||
+                       data[1] == VIAL_MACRO_EXT_DOWN ||
+                       data[1] == VIAL_MACRO_EXT_UP) {
+
+                data[2] = dynamic_keymap_read_byte(offset++);
+
+                if (data[2] != 0) {
+                    data[3] = dynamic_keymap_read_byte(offset++);
+
+                    if (data[3] != 0) {
+                        uint16_t keycode;
+
+                        memcpy(&keycode, &data[2], sizeof(keycode));
+                        keycode = decode_keycode(keycode);
+
+                        switch (data[1]) {
+                            case VIAL_MACRO_EXT_TAP:
+                                vial_keycode_tap(keycode);
+                                break;
+
+                            case VIAL_MACRO_EXT_DOWN:
+                                vial_keycode_down(keycode);
+                                break;
+
+                            case VIAL_MACRO_EXT_UP:
+                                vial_keycode_up(keycode);
+                                break;
+                        }
+                    }
+                }
+
+            /*
+             * Vial delay encoding.
+             */
+            } else if (data[1] == SS_DELAY_CODE) {
+                uint8_t d0 = dynamic_keymap_read_byte(offset++);
+                uint8_t d1 = dynamic_keymap_read_byte(offset++);
+
+                if (d0 == 0 || d1 == 0) {
+                    break;
+                }
+
+                /*
+                 * Zero cannot appear inside a dynamic macro command,
+                 * therefore values are stored offset by one and use
+                 * a base of 255.
+                 */
+                int ms = (d0 - 1) + (d1 - 1) * 255;
+
+                while (ms--) {
+                    wait_ms(1);
+                }
+            }
+
+        } else {
+            /*
+             * Ordinary text remains compatible with VIA/QMK macros.
+             */
+            send_string_with_delay(data, DYNAMIC_KEYMAP_MACRO_DELAY);
+        }
+    }
+
+#else // VIAL_ENABLE
     if (id >= DYNAMIC_KEYMAP_MACRO_COUNT) {
         return;
     }
@@ -154,18 +447,23 @@ void dynamic_keymap_macro_send(uint8_t id) {
     // p will then point to the Nth macro
     uint32_t offset = 0;
     uint32_t end    = nvm_dynamic_keymap_macro_size();
+
     while (id > 0) {
         // If we are past the end of the buffer, then there is
         // no Nth macro in the buffer.
         if (offset == end) {
             return;
         }
+
         if (dynamic_keymap_read_byte(offset) == 0) {
             --id;
         }
+
         ++offset;
     }
 
     send_string_nvm_state_t state = {.offset = offset};
     send_string_with_delay_impl(send_string_get_next_nvm, &state, DYNAMIC_KEYMAP_MACRO_DELAY);
+
+#endif // VIAL_ENABLE
 }

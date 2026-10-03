@@ -18,6 +18,9 @@
 #include "quantum_keycodes.h"
 #include "action_tapping.h"
 #include "usb_device_state.h"
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
 
 __attribute__((weak)) bool get_haptic_enabled_key(uint16_t keycode, keyrecord_t *record) {
     switch (keycode) {
@@ -26,7 +29,11 @@ __attribute__((weak)) bool get_haptic_enabled_key(uint16_t keycode, keyrecord_t 
             if (record->tap.count == 0) return false;
             break;
         case QK_LAYER_TAP_TOGGLE ... QK_LAYER_TAP_TOGGLE_MAX:
+#ifdef QMK_SETTINGS
+            if (record->tap.count != QS_tapping_toggle) return false;
+#else
             if (record->tap.count != TAPPING_TOGGLE) return false;
+#endif
             break;
         case QK_LAYER_TAP ... QK_LAYER_TAP_MAX:
             if (record->tap.count == 0) return false;

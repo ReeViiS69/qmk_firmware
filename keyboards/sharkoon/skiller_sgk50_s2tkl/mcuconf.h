@@ -1,0 +1,12 @@
+// Copyright 2024 JoyLee (@itarze)
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+#pragma once
+
+#include_next <mcuconf.h>
+
+#undef WB32_SPI_USE_QSPI
+#define WB32_SPI_USE_QSPI TRUE
+
+#undef WB32_GPT_USE_TIM3
+#define WB32_GPT_USE_TIM3 TRUE

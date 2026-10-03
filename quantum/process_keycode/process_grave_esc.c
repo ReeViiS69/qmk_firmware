@@ -14,6 +14,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include "process_grave_esc.h"
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
 #include "keycodes.h"
 #include "modifiers.h"
 #include "action_util.h"
@@ -28,6 +31,20 @@ bool process_grave_esc(uint16_t keycode, keyrecord_t *record) {
         const uint8_t mods    = get_mods();
         uint8_t       shifted = mods & MOD_MASK_SG;
 
+#ifdef QMK_SETTINGS
+        if (QS_grave_esc_alt_override && (mods & MOD_MASK_ALT)) {
+            shifted = 0;
+        }
+        if (QS_grave_esc_ctrl_override && (mods & MOD_MASK_CTRL)) {
+            shifted = 0;
+        }
+        if (QS_grave_esc_gui_override && (mods & MOD_MASK_GUI)) {
+            shifted = 0;
+        }
+        if (QS_grave_esc_shift_override && (mods & MOD_MASK_SHIFT)) {
+            shifted = 0;
+        }
+#else
 #ifdef GRAVE_ESC_ALT_OVERRIDE
         // if ALT is pressed, ESC is always sent
         // this is handy for the cmd+opt+esc shortcut on macOS, among other things.
@@ -57,6 +74,7 @@ bool process_grave_esc(uint16_t keycode, keyrecord_t *record) {
             shifted = 0;
         }
 #endif
+#endif // QMK_SETTINGS
 
         if (record->event.pressed) {
             grave_esc_was_shifted = shifted;

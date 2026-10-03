@@ -107,6 +107,8 @@ bool preprocess_tap_dance(uint16_t keycode, keyrecord_t *record);
 bool process_tap_dance(uint16_t keycode, keyrecord_t *record);
 void tap_dance_task(void);
 
+void process_tap_dance_action_on_dance_finished(tap_dance_action_t *action, tap_dance_state_t *state);
+
 void tap_dance_pair_on_each_tap(tap_dance_state_t *state, void *user_data);
 void tap_dance_pair_finished(tap_dance_state_t *state, void *user_data);
 void tap_dance_pair_reset(tap_dance_state_t *state, void *user_data);

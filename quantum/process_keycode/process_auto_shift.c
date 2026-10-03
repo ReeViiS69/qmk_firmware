@@ -15,6 +15,10 @@
  */
 
 #include "process_auto_shift.h"
+
+#ifdef QMK_SETTINGS
+#    include "qmk_settings.h"
+#endif
 #include "quantum.h"
 #include "action_util.h"
 #include "timer.h"
@@ -163,17 +167,32 @@ static bool autoshift_press(uint16_t keycode, uint16_t now, keyrecord_t *record)
         // clang-format on
         // Prevents keyrepeating unshifted value of key after using it in a key combo.
         autoshift_lastkey = KC_NO;
-#ifndef AUTO_SHIFT_MODIFIERS
+#ifdef QMK_SETTINGS
+        if (!QS_auto_shift_modifiers) {
+            // We can't return true here anymore because custom unshifted values are
+            // possible and there's no good way to tell whether the press returned
+            // true upon release.
+            set_autoshift_shift_state(keycode, false);
+            autoshift_press_user(keycode, false, record);
+#    if !defined(NO_ACTION_ONESHOT) && !defined(NO_ACTION_TAPPING)
+            set_oneshot_mods(get_oneshot_mods() & (~MOD_BIT(KC_LSFT)));
+            clear_oneshot_layer_state(ONESHOT_OTHER_KEY_PRESSED);
+#    endif
+            return false;
+        }
+#else
+#    ifndef AUTO_SHIFT_MODIFIERS
         // We can't return true here anymore because custom unshifted values are
         // possible and there's no good way to tell whether the press returned
         // true upon release.
         set_autoshift_shift_state(keycode, false);
         autoshift_press_user(keycode, false, record);
-#    if !defined(NO_ACTION_ONESHOT) && !defined(NO_ACTION_TAPPING)
+#        if !defined(NO_ACTION_ONESHOT) && !defined(NO_ACTION_TAPPING)
         set_oneshot_mods(get_oneshot_mods() & (~MOD_BIT(KC_LSFT)));
         clear_oneshot_layer_state(ONESHOT_OTHER_KEY_PRESSED);
-#    endif
+#        endif
         return false;
+#    endif
 #endif
     }
 
@@ -280,8 +299,12 @@ static void autoshift_end(uint16_t keycode, uint16_t now, bool matrix_trigger, k
         }
 #endif
         // clang-format on
-#if TAP_CODE_DELAY > 0
+#ifdef QMK_SETTINGS
+        qs_wait_ms(QS_tap_code_delay);
+#else
+#    if TAP_CODE_DELAY > 0
         wait_ms(TAP_CODE_DELAY);
+#    endif
 #endif
 
         autoshift_release_user(autoshift_lastkey, autoshift_flags.lastshifted, record);
@@ -307,6 +330,12 @@ static void autoshift_end(uint16_t keycode, uint16_t now, bool matrix_trigger, k
  *  to be released.
  */
 void autoshift_matrix_scan(void) {
+#ifdef QMK_SETTINGS
+    if (!QS_auto_shift_enable) {
+        return;
+    }
+#endif
+
     if (autoshift_flags.in_progress) {
         const uint16_t now = timer_read();
         if (TIMER_DIFF_16(now, autoshift_time) >=
@@ -364,6 +393,12 @@ void set_autoshift_timeout(uint16_t timeout) {
 }
 
 bool process_auto_shift(uint16_t keycode, keyrecord_t *record) {
+#ifdef QMK_SETTINGS
+    if (!QS_auto_shift_enable) {
+        return true;
+    }
+#endif
+
     // Note that record->event.time isn't reliable, see:
     // https://github.com/qmk/qmk_firmware/pull/9826#issuecomment-733559550
     // clang-format off

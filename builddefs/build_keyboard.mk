@@ -238,6 +238,9 @@ include $(BUILDDEFS_PATH)/converters.mk
 
 # Generate the board's version.h file.
 $(shell $(QMK_BIN) generate-version-h $(VERSION_H_FLAGS) -q -o $(INTERMEDIATE_OUTPUT)/src/version.h)
+ifeq ($(strip $(VIAL_ENABLE)), yes)
+$(shell python3 util/build_id.py >> $(INTERMEDIATE_OUTPUT)/src/version.h)
+endif
 
 MCU_ORIG := $(MCU)
 include $(wildcard $(PLATFORM_PATH)/*/mcu_selection.mk)

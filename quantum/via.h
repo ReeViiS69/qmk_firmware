@@ -39,7 +39,11 @@
 
 // This is changed only when the command IDs change,
 // so VIA Configurator can detect compatible firmware.
-#define VIA_PROTOCOL_VERSION 0x000D
+#ifdef VIAL_ENABLE
+#    define VIA_PROTOCOL_VERSION 0x0009
+#else
+#    define VIA_PROTOCOL_VERSION 0x000D
+#endif
 
 // This is a version number for the firmware for the keyboard.
 // It can be used to ensure the VIA keyboard definition and the firmware
@@ -73,6 +77,9 @@ enum via_command_id {
     id_dynamic_keymap_set_buffer            = 0x13,
     id_dynamic_keymap_get_encoder           = 0x14,
     id_dynamic_keymap_set_encoder           = 0x15,
+#ifdef VIAL_ENABLE
+    id_vial_prefix                          = 0xFE,
+#endif
     id_unhandled                            = 0xFF,
 };
 

@@ -27,6 +27,14 @@
 #endif
 
 #include "via.h"
+#include "bootloader.h"
+
+#ifdef VIAL_ENABLE
+#    include "vial.h"
+#endif
+#ifdef VIALRGB_ENABLE
+#    include "vialrgb.h"
+#endif
 
 #include "raw_hid.h"
 #include "dynamic_keymap.h"
@@ -68,10 +76,16 @@
 // Can be called in an overriding via_init_kb() to test if keyboard level code usage of
 // EEPROM is invalid and use/save defaults.
 bool via_eeprom_is_valid(void) {
+#ifdef VIAL_ENABLE
+    uint8_t magic0 = BUILD_ID & 0xFF;
+    uint8_t magic1 = (BUILD_ID >> 8) & 0xFF;
+    uint8_t magic2 = (BUILD_ID >> 16) & 0xFF;
+#else
     char   *p      = QMK_BUILDDATE; // e.g. "2019-11-05-11:29:54"
     uint8_t magic0 = ((p[2] & 0x0F) << 4) | (p[3] & 0x0F);
     uint8_t magic1 = ((p[5] & 0x0F) << 4) | (p[6] & 0x0F);
     uint8_t magic2 = ((p[8] & 0x0F) << 4) | (p[9] & 0x0F);
+#endif
 
     uint8_t ee_magic0;
     uint8_t ee_magic1;
@@ -85,10 +99,16 @@ bool via_eeprom_is_valid(void) {
 // Keyboard level code (eg. via_init_kb()) should not call this
 void via_eeprom_set_valid(bool valid) {
     if (valid) {
+#ifdef VIAL_ENABLE
+        uint8_t magic0 = BUILD_ID & 0xFF;
+        uint8_t magic1 = (BUILD_ID >> 8) & 0xFF;
+        uint8_t magic2 = (BUILD_ID >> 16) & 0xFF;
+#else
         char   *p      = QMK_BUILDDATE; // e.g. "2019-11-05-11:29:54"
         uint8_t magic0 = ((p[2] & 0x0F) << 4) | (p[3] & 0x0F);
         uint8_t magic1 = ((p[5] & 0x0F) << 4) | (p[6] & 0x0F);
         uint8_t magic2 = ((p[8] & 0x0F) << 4) | (p[9] & 0x0F);
+#endif
         nvm_via_update_magic(magic0, magic1, magic2);
     } else {
         nvm_via_update_magic(0xFF, 0xFF, 0xFF);
@@ -128,6 +148,12 @@ void eeconfig_init_via(void) {
     dynamic_keymap_reset();
     // This resets the macros in EEPROM to nothing.
     dynamic_keymap_macro_reset();
+#ifdef VIAL_ENABLE
+    // dynamic_keymap_reset() also resets Vial's persistent dynamic entries.
+    // Refresh the runtime caches so a BUILD_ID invalidation or manual EEPROM
+    // reset takes effect immediately instead of only after the next reboot.
+    vial_init();
+#endif
     // Save the magic number last, in case saving was interrupted
     via_eeprom_set_valid(true);
 }
@@ -287,9 +313,51 @@ __attribute__((weak)) bool via_command_kb(uint8_t *data, uint8_t length) {
     return false;
 }
 
+#ifdef VIAL_ENABLE
+/*
+ * Filter security-sensitive keycodes received through VIA.
+ *
+ * Keep this at the untrusted host boundary instead of making the generic
+ * dynamic-keymap storage functions security-aware.
+ */
+__attribute__((unused)) static uint16_t vial_keycode_firewall(uint16_t in) {
+    if (in == QK_BOOT && !vial_unlocked) {
+        return 0;
+    }
+
+    return in;
+}
+#endif
+
 void raw_hid_receive(uint8_t *data, uint8_t length) {
     uint8_t *command_id   = &(data[0]);
     uint8_t *command_data = &(data[1]);
+
+#ifdef VIAL_ENABLE
+    /*
+     * While the physical unlock gesture is in progress, only commands
+     * required to identify the keyboard and complete the unlock may run.
+     *
+     * This intentionally happens before via_command_kb(), so keyboard-level
+     * VIA handlers cannot bypass the Vial unlock state.
+     */
+    if (vial_unlock_in_progress) {
+        if (data[0] != id_vial_prefix) {
+            goto vial_skip;
+        }
+
+        uint8_t vial_command = data[1];
+
+        if (vial_command != vial_get_keyboard_id &&
+            vial_command != vial_get_size &&
+            vial_command != vial_get_def &&
+            vial_command != vial_get_unlock_status &&
+            vial_command != vial_unlock_start &&
+            vial_command != vial_unlock_poll) {
+            goto vial_skip;
+        }
+    }
+#endif
 
     // If via_command_kb() returns true, the command was fully
     // handled, including calling raw_hid_send()
@@ -322,11 +390,18 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
                     break;
                 }
                 case id_switch_matrix_state: {
+#ifdef VIAL_ENABLE
+                    /* Do not expose the live switch matrix while Vial is locked. */
+                    if (!vial_unlocked) {
+                        goto vial_skip;
+                    }
+#endif
+
                     uint8_t offset = command_data[1];
                     uint8_t rows   = 28 / ((MATRIX_COLS + 7) / 8);
                     uint8_t i      = 2;
                     for (uint8_t row = 0; row < rows && row + offset < MATRIX_ROWS; row++) {
-#if defined(VIA_INSECURE)
+#if defined(VIAL_ENABLE) || defined(VIA_INSECURE)
                         matrix_row_t value = matrix_get_row(row + offset);
 #elif defined(SECURE_ENABLE)
                         matrix_row_t value = 0;
@@ -402,16 +477,64 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             break;
         }
         case id_dynamic_keymap_set_keycode: {
+#ifdef VIAL_ENABLE
+            dynamic_keymap_set_keycode(command_data[0], command_data[1], command_data[2], vial_keycode_firewall((command_data[3] << 8) | command_data[4]));
+#else
             dynamic_keymap_set_keycode(command_data[0], command_data[1], command_data[2], (command_data[3] << 8) | command_data[4]);
+#endif
             break;
         }
         case id_dynamic_keymap_reset: {
             dynamic_keymap_reset();
             break;
         }
-        case id_custom_set_value:
-        case id_custom_get_value:
+        case id_custom_set_value: {
+#ifdef VIALRGB_ENABLE
+            /*
+             * VialRGB uses the same outer wire ID (0x07) as modern
+             * id_custom_set_value. Its second byte is a VialRGB command
+             * in the 0x40 range, well outside QMK's channel IDs.
+             */
+            if (command_data[0] == vialrgb_set_mode ||
+                command_data[0] == vialrgb_direct_fastset) {
+                vialrgb_set_value(data, length);
+                break;
+            }
+#endif
+            via_custom_value_command(data, length);
+            break;
+        }
+
+        case id_custom_get_value: {
+#ifdef VIALRGB_ENABLE
+            /*
+             * Same wire-ID compatibility for GET. Keep all normal QMK
+             * channels on the modern via_custom_value_command() path.
+             */
+            if (command_data[0] >= vialrgb_get_info &&
+                command_data[0] <= vialrgb_get_led_info) {
+                vialrgb_get_value(data, length);
+                break;
+            }
+#endif
+            via_custom_value_command(data, length);
+            break;
+        }
+
         case id_custom_save: {
+#ifdef VIALRGB_ENABLE
+            /*
+             * Vial's old lighting-save command and modern custom-save both
+             * use outer ID 0x09 and lighting-save has no VialRGB subcommand.
+             *
+             * Preserve modern QMK core channels 1..5. Channel 0 (or a value
+             * outside QMK's core-channel range) is treated as VialRGB save.
+             */
+            if (command_data[0] == id_custom_channel) {
+                vialrgb_save(data, length);
+                break;
+            }
+#endif
             via_custom_value_command(data, length);
             break;
         }
@@ -435,13 +558,24 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         case id_dynamic_keymap_macro_get_buffer: {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_macro_get_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_macro_get_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
         case id_dynamic_keymap_macro_set_buffer: {
+#ifdef VIAL_ENABLE
+            /* Until Vial is unlocked, do not allow changing macros. */
+            if (!vial_unlocked) {
+                goto vial_skip;
+            }
+#endif
+
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_macro_set_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_macro_set_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
         case id_dynamic_keymap_macro_reset: {
@@ -455,15 +589,38 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         case id_dynamic_keymap_get_buffer: {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_get_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_get_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
         case id_dynamic_keymap_set_buffer: {
             uint16_t offset = (command_data[0] << 8) | command_data[1];
             uint16_t size   = command_data[2]; // size <= 28
-            dynamic_keymap_set_buffer(offset, size, &command_data[3]);
+            if (size <= 28) {
+                dynamic_keymap_set_buffer(offset, size, &command_data[3]);
+            }
             break;
         }
+
+#if defined(VIAL_ENABLE) && !defined(VIAL_INSECURE)
+        case id_bootloader_jump: {
+            /* A locked Vial keyboard may not be remotely rebooted to bootloader. */
+            if (!vial_unlocked) {
+                goto vial_skip;
+            }
+
+            /*
+             * Acknowledge before jumping, otherwise the host loses the
+             * USB device before it receives the response.
+             */
+            raw_hid_send(data, length);
+            wait_ms(100);
+            bootloader_jump();
+            break;
+        }
+#endif
+
 #ifdef ENCODER_MAP_ENABLE
         case id_dynamic_keymap_get_encoder: {
             uint16_t keycode = dynamic_keymap_get_encoder(command_data[0], command_data[1], command_data[2] != 0);
@@ -472,7 +629,17 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
             break;
         }
         case id_dynamic_keymap_set_encoder: {
+#ifdef VIAL_ENABLE
+            dynamic_keymap_set_encoder(command_data[0], command_data[1], command_data[2] != 0, vial_keycode_firewall((command_data[3] << 8) | command_data[4]));
+#else
             dynamic_keymap_set_encoder(command_data[0], command_data[1], command_data[2] != 0, (command_data[3] << 8) | command_data[4]);
+#endif
+            break;
+        }
+#endif
+#ifdef VIAL_ENABLE
+        case id_vial_prefix: {
+            vial_handle_cmd(data, length);
             break;
         }
 #endif
@@ -484,6 +651,9 @@ void raw_hid_receive(uint8_t *data, uint8_t length) {
         }
     }
 
+#ifdef VIAL_ENABLE
+vial_skip:
+#endif
     // Return the same buffer, optionally with values changed
     // (i.e. returning state to the host, or the unhandled state).
     raw_hid_send(data, length);
